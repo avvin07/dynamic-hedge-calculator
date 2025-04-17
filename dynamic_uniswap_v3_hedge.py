@@ -983,36 +983,41 @@ class UniswapV3HedgeCalculator(tk.Tk):
             exit_line = self.hedge_ax2.axvline(x=exit_price, color='red', linestyle='-.', 
                                              linewidth=2, label='Цена выхода')
             
-            # Добавляем аннотацию точек пересечений с ценой выхода
-            # Точки пересечения с кривой без хеджа (над линией)
+            # Создаем прямоугольные рамки с белым фоном для текста
+            bbox_props = dict(boxstyle="round,pad=0.5", fc="white", alpha=0.9, ec="gray", lw=0.5)
+            
+            # Определяем, какая кривая выше в точке пересечения с ценой выхода
+            # Позиции аннотаций изменяются в зависимости от этого
+            
+            # Точки пересечения с кривой без хеджа
             self.hedge_ax2.plot([exit_price], [exit_base_value], 'ro', markersize=7)
             self.hedge_ax2.annotate(f"Базовая позиция: {exit_base_value:.0f} USDC", 
                                 xy=(exit_price, exit_base_value),
-                                xytext=(10, 30),  # Увеличиваем отступ вверх
+                                xytext=(60, 40),  # Смещаем подпись вправо и вверх
                                 textcoords="offset points",
-                                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"),
-                                bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
-                                fontsize=10)  # Увеличиваем размер шрифта
+                                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-.2"),
+                                bbox=bbox_props,
+                                fontsize=10, fontweight='bold')
             
-            # Точки пересечения с кривой с хеджем (под линией)
+            # Точки пересечения с кривой с хеджем (выше)
             self.hedge_ax2.plot([exit_price], [exit_total_value], 'go', markersize=7)
             self.hedge_ax2.annotate(f"С хеджем: {exit_total_value:.0f} USDC", 
                                 xy=(exit_price, exit_total_value),
-                                xytext=(10, -30),  # Отступ вниз
+                                xytext=(60, 50),  # Смещаем подпись вправо и вверх
                                 textcoords="offset points",
                                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"),
-                                bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
-                                fontsize=10)  # Увеличиваем размер шрифта
+                                bbox=bbox_props,
+                                fontsize=10, fontweight='bold')
             
-            # Точки пересечения с кривой P&L хеджа (в сторону)
+            # Точки пересечения с кривой P&L хеджа (ниже)
             self.hedge_ax2.plot([exit_price], [exit_hedge_pnl_adjusted], 'yo', markersize=6, alpha=0.8)
             self.hedge_ax2.annotate(f"P&L хеджа: {exit_hedge_pnl:.0f} USDC", 
                                 xy=(exit_price, exit_hedge_pnl_adjusted),
-                                xytext=(40, 0),  # Смещаем подпись вправо
+                                xytext=(-60, -40),  # Смещаем подпись влево и вниз
                                 textcoords="offset points",
                                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"),
-                                bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
-                                fontsize=10)  # Увеличиваем размер шрифта
+                                bbox=bbox_props,
+                                fontsize=10, fontweight='bold')
             
             # Обновляем легенду графика с увеличенным размером шрифта
             self.hedge_ax2.legend(loc='best', fontsize=10, framealpha=0.7)
