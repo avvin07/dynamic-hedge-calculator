@@ -1384,6 +1384,10 @@ class UniswapV3HedgeCalculator(tk.Tk):
         view_prices_button = ttk.Button(buttons_container, text="Просмотр цен", command=self.show_prices_as_table)
         view_prices_button.pack(side="left", padx=5)
         
+        # Кнопка для очистки всех значений
+        clear_all_button = ttk.Button(buttons_container, text="Очистить все значения", command=self.clear_all_price_fields)
+        clear_all_button.pack(side="left", padx=5)
+        
         # Добавляем начальные поля для цен
         self.add_initial_price_fields()
         
@@ -2707,6 +2711,41 @@ class UniswapV3HedgeCalculator(tk.Tk):
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при экспорте данных: {str(e)}")
             traceback.print_exc()
+
+    def clear_all_price_fields(self):
+        """Очищает все поля цен и сбрасывает результаты"""
+        try:
+            # Удаляем все поля ввода цен
+            for widget in self.dynamic_price_container.winfo_children():
+                widget.destroy()
+            
+            # Очищаем список переменных цен
+            self.dynamic_price_vars.clear()
+            
+            # Очищаем результаты
+            self.dynamic_results = []
+            self.dynamic_results_text.delete(1.0, tk.END)
+            
+            # Сбрасываем итоговые значения
+            for key in self.summary_vars:
+                if key == "delta":
+                    self.summary_vars[key].set("0.0000")
+                else:
+                    self.summary_vars[key].set("0.00")
+            
+            # Очищаем текстовое поле для массового ввода
+            self.bulk_price_text.delete(1.0, tk.END)
+            
+            # Добавляем новое первое поле для ввода
+            price1 = tk.DoubleVar(value=0)
+            self.dynamic_price_vars.append(price1)
+            self.create_price_field(0, price1)
+            
+            # Выводим сообщение об успешной очистке
+            messagebox.showinfo("Очистка", "Все значения цен были успешно очищены")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Произошла ошибка при очистке значений: {str(e)}")
 
 if __name__ == "__main__":
     app = UniswapV3HedgeCalculator()
