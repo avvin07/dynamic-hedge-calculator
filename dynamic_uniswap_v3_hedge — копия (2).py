@@ -1,11 +1,13 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import math
 import locale
-from tkinter import messagebox
+import pandas as pd
+import os
+import traceback
 
 # Настройка локализации для поддержки разделителей как "," так и "."
 try:
@@ -205,6 +207,14 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.figure.tight_layout(pad=3.0)
         self.canvas = FigureCanvasTkAgg(self.figure, self.plot_frame)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
+        
+        # Добавляем кнопку экспорта в CSV в правую часть панели результатов
+        export_button = ttk.Button(self.results_frame, text="Экспорт в CSV", command=self.export_to_csv, width=20)
+        export_button.grid(row=5, column=2, pady=5, padx=20, sticky="w")
+        
+        # Добавляем кнопку загрузки из файла
+        load_button = ttk.Button(self.results_frame, text="Загрузить из файла", command=lambda: self.load_prices_and_display(self.current_price), width=20)
+        load_button.grid(row=6, column=2, pady=5, padx=20, sticky="w")
     
     def create_hedge_tab_widgets(self):
         # Создаем фрейм-контейнер для размещения трех фреймов в одной строке
@@ -320,6 +330,12 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.hedge_figure.subplots_adjust(left=0.12, right=0.9, top=0.9, bottom=0.1)
         self.hedge_canvas = FigureCanvasTkAgg(self.hedge_figure, self.hedge_plot_frame)
         self.hedge_canvas.get_tk_widget().pack(fill="both", expand=True)
+        
+        # Добавляем кнопку экспорта в CSV
+        ttk.Button(exit_frame, text="Экспорт в CSV", command=self.export_to_csv).grid(row=5, column=0, pady=5, padx=10, sticky="w")
+        
+        # Добавляем кнопку загрузки цен из файла
+        ttk.Button(exit_frame, text="Загрузить из файла", command=lambda: self.load_prices_and_display(self.exit_price)).grid(row=5, column=1, pady=5, padx=10, sticky="w")
     
     def create_grid_tab_widgets(self):
         # Фрейм для настроек сетки
@@ -358,8 +374,20 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.sim_prices = ttk.Entry(sim_frame, width=50)
         self.sim_prices.grid(row=0, column=1, padx=5, pady=5)
         
+        # Кнопки управления
+        buttons_frame = ttk.Frame(sim_frame)
+        buttons_frame.grid(row=1, column=0, columnspan=2, pady=5)
+        
         # Кнопка запуска симуляции
-        ttk.Button(sim_frame, text="Запустить симуляцию", command=self.run_simulation).grid(row=1, column=0, columnspan=2, pady=5)
+        ttk.Button(buttons_frame, text="Запустить симуляцию", command=self.run_simulation).pack(side="left", padx=5)
+        
+        # Кнопка загрузки цен из файла
+        ttk.Button(buttons_frame, text="Загрузить из файла", 
+                 command=self.load_prices_for_simulation).pack(side="left", padx=5)
+        
+        # Кнопка экспорта в CSV
+        ttk.Button(buttons_frame, text="Экспорт в CSV", 
+                 command=self.export_to_csv).pack(side="left", padx=5)
         
         # График результатов
         self.grid_fig, (self.grid_ax1, self.grid_ax2) = plt.subplots(2, 1, figsize=(8, 6))
@@ -1270,9 +1298,17 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.dynamic_price_container = ttk.Frame(price_frame)
         self.dynamic_price_container.pack(fill="x", padx=5, pady=5)
         
+        # Кнопки управления ценами
+        buttons_frame = ttk.Frame(price_frame)
+        buttons_frame.pack(fill="x", padx=5, pady=5)
+        
         # Кнопка добавления цены
-        add_price_button = ttk.Button(price_frame, text="Добавить цену", command=self.add_price_field)
-        add_price_button.pack(pady=5)
+        add_price_button = ttk.Button(buttons_frame, text="Добавить цену", command=self.add_price_field)
+        add_price_button.pack(side="left", padx=5)
+        
+        # Кнопка загрузки цен из файла
+        load_prices_button = ttk.Button(buttons_frame, text="Загрузить из файла", command=self.load_prices_from_file_and_update)
+        load_prices_button.pack(side="left", padx=5)
         
         # Добавляем начальные поля для цен
         self.add_initial_price_fields()
@@ -1306,6 +1342,13 @@ class UniswapV3HedgeCalculator(tk.Tk):
         # Создаем холст для отображения графиков
         self.dynamic_canvas = FigureCanvasTkAgg(self.dynamic_fig, master=self.dynamic_plot_frame)
         self.dynamic_canvas.get_tk_widget().pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Создаем контейнер для кнопок
+        buttons_container = ttk.Frame(self.dynamic_tab)
+        buttons_container.pack(fill="x", padx=10, pady=5)
+        
+        # Добавляем кнопку экспорта в CSV
+        ttk.Button(buttons_container, text="Экспорт в CSV", command=self.export_dynamic_to_csv).pack(side="left", padx=5, pady=10)
 
     def add_initial_price_fields(self):
         """Инициализирует начальные поля для ввода цен"""
@@ -1869,6 +1912,291 @@ class UniswapV3HedgeCalculator(tk.Tk):
             messagebox.showerror("Ошибка", f"Ошибка при построении графика: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def export_to_csv(self):
+        """Экспортирует данные в CSV файл"""
+        try:
+            # Открываем диалог сохранения файла
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+                title="Сохранить данные как CSV"
+            )
+            
+            if not file_path:
+                return  # Пользователь отменил сохранение
+            
+            # Формируем данные для экспорта в зависимости от активной вкладки
+            data = []
+            
+            # Получаем текущие параметры
+            current_price = float(str(self.current_price.get()).replace(',', '.'))
+            lower_bound = float(str(self.lower_bound.get()).replace(',', '.'))
+            upper_bound = float(str(self.upper_bound.get()).replace(',', '.'))
+            total_pool_value = float(str(self.total_pool_value.get()).replace(',', '.'))
+            
+            # Рассчитываем ликвидность
+            liquidity = total_pool_value / (((1/math.sqrt(current_price) - 1/math.sqrt(upper_bound)) * current_price) + 
+                                        (math.sqrt(current_price) - math.sqrt(lower_bound)))
+            
+            # Создаем ценовой диапазон для экспорта
+            step = (upper_bound - lower_bound) / 50
+            price_range = []
+            price = max(0.1, lower_bound * 0.5)  # Начинаем с половины нижней границы, но не меньше 0.1
+            while price <= upper_bound * 1.5:  # Заканчиваем на 150% верхней границы
+                price_range.append(price)
+                price += step
+            
+            # Рассчитываем значения для каждой цены
+            for price in price_range:
+                # Базовая позиция
+                if price < lower_bound:
+                    eth = liquidity * (1/math.sqrt(lower_bound) - 1/math.sqrt(upper_bound))
+                    usdc = 0
+                elif price > upper_bound:
+                    eth = 0
+                    usdc = liquidity * (math.sqrt(upper_bound) - math.sqrt(lower_bound))
+                else:
+                    eth = liquidity * (1/math.sqrt(price) - 1/math.sqrt(upper_bound))
+                    usdc = liquidity * (math.sqrt(price) - math.sqrt(lower_bound))
+                
+                base_value = eth * price + usdc
+                
+                # Хеджирующая позиция
+                hedge_eth = 0
+                hedge_usdc = 0
+                hedge_pnl = 0
+                
+                if self.hedge_enabled.get():
+                    hedge_amount = float(str(self.hedge_amount.get()).replace(',', '.'))
+                    hedge_price = float(str(self.hedge_price.get()).replace(',', '.'))
+                    hedge_eth = -hedge_amount
+                    hedge_usdc = abs(hedge_eth) * hedge_price
+                    
+                    # P&L хеджа (для шорта это price_diff * amount)
+                    hedge_pnl = -hedge_eth * (hedge_price - price)
+                    
+                    # Получаем комиссию
+                    try:
+                        hedge_fee_percent = float(str(self.hedge_fee_percent.get()).replace(',', '.')) / 100.0
+                    except:
+                        hedge_fee_percent = 0.002  # 0.2% по умолчанию
+                    
+                    # Расчет комиссии
+                    hedge_fee = abs(hedge_eth) * hedge_price * hedge_fee_percent
+                    hedge_pnl -= hedge_fee
+                
+                # Общий результат
+                total_value = base_value + hedge_pnl
+                
+                # Добавляем строку данных
+                data.append({
+                    'Цена': price,
+                    'ETH в пуле': eth,
+                    'USDC в пуле': usdc,
+                    'Стоимость пула': base_value,
+                    'Хедж ETH': hedge_eth,
+                    'P&L хеджа': hedge_pnl,
+                    'Общая стоимость': total_value
+                })
+            
+            # Сохраняем данные в CSV
+            df = pd.DataFrame(data)
+            df.to_csv(file_path, index=False)
+            
+            messagebox.showinfo("Экспорт завершен", f"Данные успешно экспортированы в {file_path}")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при экспорте данных: {str(e)}")
+            traceback.print_exc()
+    
+    def export_dynamic_to_csv(self):
+        """Экспортирует результаты динамического хеджирования в CSV файл"""
+        try:
+            # Проверяем, есть ли результаты для экспорта
+            if not hasattr(self, 'dynamic_results') or not self.dynamic_results:
+                messagebox.showwarning("Предупреждение", "Нет данных для экспорта. Сначала выполните расчет.")
+                return
+                
+            # Открываем диалог сохранения файла
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+                title="Сохранить данные как CSV"
+            )
+            
+            if not file_path:
+                return  # Пользователь отменил сохранение
+                
+            # Формируем данные для экспорта
+            data = []
+            for step_data in self.dynamic_results:
+                data.append({
+                    'Шаг': step_data.get('step', 0),
+                    'Цена': step_data.get('price', 0),
+                    'ETH в пуле': step_data.get('pool_eth', 0),
+                    'USDC в пуле': step_data.get('pool_usdc', 0),
+                    'Стоимость пула': step_data.get('pool_value', 0),
+                    'Хедж ETH': step_data.get('hedge_eth', 0),
+                    'Дельта': step_data.get('delta', 0),
+                    'Изменение хеджа': step_data.get('hedge_change', 0),
+                    'Комиссия': step_data.get('fee', 0),
+                    'Общая комиссия': step_data.get('total_fee', 0),
+                    'P&L хеджа за шаг': step_data.get('hedge_pnl', 0),
+                    'Накопленный P&L хеджа': step_data.get('cumulative_hedge_pnl', 0),
+                    'P&L базовой позиции': step_data.get('base_pnl', 0),
+                    'Общий P&L': step_data.get('total_pnl', 0),
+                    'Направление цены': step_data.get('price_direction', ''),
+                    'Тип операции': step_data.get('operation_type', '')
+                })
+                
+            # Сохраняем данные в CSV
+            df = pd.DataFrame(data)
+            df.to_csv(file_path, index=False)
+            
+            messagebox.showinfo("Экспорт завершен", f"Данные успешно экспортированы в {file_path}")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при экспорте данных: {str(e)}")
+            traceback.print_exc()
+    
+    def load_prices_from_file(self):
+        """Загружает цены из файла"""
+        try:
+            # Открываем диалог выбора файла
+            file_path = filedialog.askopenfilename(
+                filetypes=[("CSV files", "*.csv"), ("Text files", "*.txt"), ("All files", "*.*")],
+                title="Выберите файл с ценами"
+            )
+            
+            if not file_path:
+                return None  # Пользователь отменил выбор
+            
+            prices = []
+            
+            # Определяем разделитель на основе расширения файла
+            delimiter = ',' if file_path.lower().endswith('.csv') else None
+            
+            # Открываем файл и читаем строки
+            with open(file_path, 'r') as file:
+                for line in file:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue  # Пропускаем пустые строки и комментарии
+                    
+                    # Разделяем строку, если нужно
+                    if delimiter:
+                        parts = line.split(delimiter)
+                        # Берем первую колонку, если это CSV с несколькими столбцами
+                        value = parts[0].strip()
+                    else:
+                        value = line
+                    
+                    try:
+                        # Преобразуем значение в число с плавающей точкой
+                        price = float(value.replace(',', '.'))
+                        prices.append(price)
+                    except ValueError:
+                        # Пропускаем нечисловые значения
+                        continue
+            
+            if not prices:
+                messagebox.showwarning("Предупреждение", "В выбранном файле не найдено числовых значений цен")
+                return None
+            
+            return prices
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при загрузке цен из файла: {str(e)}")
+            traceback.print_exc()
+            return None
+    
+    def load_prices_and_display(self, target_var):
+        """Загружает цены из файла и устанавливает первую цену в указанную переменную"""
+        prices = self.load_prices_from_file()
+        
+        if prices and len(prices) > 0:
+            # Устанавливаем первую цену из файла в указанную переменную
+            target_var.set(prices[0])
+            
+            # Если загружено больше одной цены, спрашиваем пользователя
+            if len(prices) > 1:
+                use_for_dynamic = messagebox.askyesno(
+                    "Найдено несколько цен", 
+                    f"Загружено {len(prices)} цен. Хотите использовать их для динамического хеджирования?"
+                )
+                
+                if use_for_dynamic:
+                    # Переключаемся на вкладку динамического хеджирования
+                    self.tab_control.select(3)  # Индекс вкладки динамического хеджирования
+                    
+                    # Очищаем существующие поля ввода цен
+                    self.dynamic_price_vars = []
+                    
+                    # Удаляем все виджеты из контейнера
+                    for widget in self.dynamic_price_container.winfo_children():
+                        widget.destroy()
+                    
+                    # Создаем новые поля для каждой цены из файла
+                    for price in prices:
+                        price_var = tk.DoubleVar(value=price)
+                        self.dynamic_price_vars.append(price_var)
+                    
+                    # Отображаем поля ввода для загруженных цен
+                    for i, price_var in enumerate(self.dynamic_price_vars):
+                        self.create_price_field(i, price_var)
+            
+            messagebox.showinfo("Загрузка завершена", f"Загружено {len(prices)} цен из файла")
+            
+            # Обновляем расчеты
+            self.calculate_only_text()
+            
+            return True
+        
+        return False
+    
+    def load_prices_from_file_and_update(self):
+        """Загружает цены из файла и обновляет поля ввода цен на вкладке динамического хеджирования"""
+        prices = self.load_prices_from_file()
+        
+        if prices:
+            # Очищаем существующие поля ввода цен
+            self.dynamic_price_vars = []
+            
+            # Удаляем все виджеты из контейнера
+            for widget in self.dynamic_price_container.winfo_children():
+                widget.destroy()
+            
+            # Создаем новые поля для каждой цены из файла
+            for price in prices:
+                price_var = tk.DoubleVar(value=price)
+                self.dynamic_price_vars.append(price_var)
+            
+            # Отображаем поля ввода для загруженных цен
+            for i, price_var in enumerate(self.dynamic_price_vars):
+                self.create_price_field(i, price_var)
+            
+            messagebox.showinfo("Успешно", f"Загружено {len(prices)} цен из файла")
+            return True
+            
+        return False
+    
+    def load_prices_for_simulation(self):
+        """Загружает цены из файла для симуляции сеточного хеджирования"""
+        prices = self.load_prices_from_file()
+        
+        if prices:
+            # Преобразуем список цен в строку с запятыми
+            price_string = ", ".join([str(price) for price in prices])
+            
+            # Обновляем поле ввода цен для симуляции
+            self.sim_prices.delete(0, tk.END)
+            self.sim_prices.insert(0, price_string)
+            
+            messagebox.showinfo("Успешно", f"Загружено {len(prices)} цен для симуляции")
+            return True
+            
+        return False
 
 if __name__ == "__main__":
     app = UniswapV3HedgeCalculator()

@@ -76,6 +76,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
         
         # Переменные для динамического хеджирования
         self.dynamic_step = tk.DoubleVar(value=50.0)  # Шаг изменения цены для ребалансировки
+        self.dynamic_fee = tk.DoubleVar(value=0.1)  # Комиссия для динамического хеджирования
         self.dynamic_prices = []  # Список пользовательских цен
         self.dynamic_price_vars = []  # Список переменных для полей ввода цен
         self.dynamic_results = []  # Результаты расчетов
@@ -1275,9 +1276,8 @@ class UniswapV3HedgeCalculator(tk.Tk):
         
         # Комиссия
         ttk.Label(settings_frame, text="Комиссия (%):").grid(row=0, column=2, padx=5, pady=5, sticky="w")
-        fee_entry = ttk.Entry(settings_frame, width=10)
+        fee_entry = ttk.Entry(settings_frame, textvariable=self.dynamic_fee, width=10)
         fee_entry.grid(row=0, column=3, padx=5, pady=5, sticky="w")
-        fee_entry.insert(0, str(self.hedge_fee_percent.get()))
         
         # Создаем верхний контейнер для размещения фреймов ввода цен и итоговых результатов
         top_container = ttk.Frame(self.dynamic_tab)
@@ -1558,7 +1558,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
             # Получаем параметры
             step = float(str(self.dynamic_step.get()).replace(',', '.'))
             current_price = float(str(self.current_price.get()).replace(',', '.'))
-            fee_percent = float(str(self.hedge_fee_percent.get()).replace(',', '.')) / 100.0
+            fee_percent = float(str(self.dynamic_fee.get()).replace(',', '.')) / 100.0
             
             # Получаем начальные параметры основной позиции
             lower_bound = float(str(self.lower_bound.get()).replace(',', '.'))
