@@ -770,9 +770,9 @@ class UniswapV3HedgeCalculator(tk.Tk):
     def plot_hedged_position(self, current_price, lower_bound, upper_bound, liquidity, hedge_eth, hedge_usdc):
         # Уже не нужно очищать, так как график пересоздан
         
-        # Расширяем диапазон отображения на 25%
-        price_min = lower_bound * 0.75  # расширяем на 25% вниз
-        price_max = upper_bound * 1.25  # расширяем на 25% вверх
+        # Расширяем диапазон отображения: 50% вниз от нижнего канала и 20% вверх от верхнего канала
+        price_min = lower_bound * 0.5  # расширяем на 50% вниз
+        price_max = upper_bound * 1.2  # расширяем на 20% вверх
         
         # Create price range for x-axis с расширенным диапазоном
         price_range = np.linspace(price_min, price_max, 1000)
@@ -806,6 +806,9 @@ class UniswapV3HedgeCalculator(tk.Tk):
         except:
             hedge_fee_percent = 0.002  # 0.2% по умолчанию
         
+        # Расчет комиссии хеджа
+        hedge_fee = abs(hedge_eth) * hedge_price * hedge_fee_percent
+        
         for price in price_range:
             # Базовая позиция
             if price < lower_bound:
@@ -829,17 +832,20 @@ class UniswapV3HedgeCalculator(tk.Tk):
             # Хеджирующая позиция (шорт фьючерс) с учетом комиссии
             hedge_eth_val = hedge_eth  # Фиксированное количество (отрицательное для шорта)
             
-            # Расчет комиссии (0.2% от объема сделки)
-            hedge_fee = abs(hedge_eth_val) * hedge_price * hedge_fee_percent
-            
             # Для шорта: прибыль = (цена продажи - текущая цена) * количество - комиссия
             hedge_price_diff = hedge_price - price  # Это положительно, если цена упала
             hedge_pnl = -hedge_eth_val * hedge_price_diff - hedge_fee  # Вычитаем комиссию
             
-            hedge_pnl_values.append(hedge_pnl)
+            # Смещаем кривую P&L хеджа, чтобы она проходила через точку входа (total_pool_value)
+            # Простое визуальное смещение (не влияет на расчеты P&L)
+            if abs(hedge_eth) > 0.0001:  # Проверяем, что хедж активен
+                hedge_pnl_adjusted = total_pool_value + hedge_pnl
+            else:
+                hedge_pnl_adjusted = total_pool_value  # Если хедж не активен, просто рисуем горизонтальную линию
             
-            # Правильная сумма должна быть близка к исходному total_pool_value, 
-            # с изменениями только за счет P&L хеджа
+            hedge_pnl_values.append(hedge_pnl_adjusted)
+            
+            # Оригинальное значение P&L используем для расчета общей стоимости
             total_value = base_value + hedge_pnl
             
             total_values.append(total_value)
@@ -850,9 +856,13 @@ class UniswapV3HedgeCalculator(tk.Tk):
         l2 = self.hedge_ax2.plot(price_range, total_values, linewidth=2, 
                               label='С хеджем (USDC)', color='#2ca02c')
         
+        # Добавляем кривую P&L хеджа (полупрозрачную)
+        lh = self.hedge_ax2.plot(price_range, hedge_pnl_values, linewidth=1.5, 
+                            label='P&L хеджа (USDC)', color='#ff7f0e', alpha=0.4)
+        
         # Устанавливаем значения оси Y для графика
-        min_value = min(min(base_total_values), min(total_values))
-        max_value = max(max(base_total_values), max(total_values))
+        min_value = min(min(base_total_values), min(total_values), min(hedge_pnl_values))
+        max_value = max(max(base_total_values), max(total_values), max(hedge_pnl_values))
         value_margin = (max_value - min_value) * 0.1
         self.hedge_ax2.set_ylim(min_value - value_margin, max_value + value_margin)
         
@@ -904,6 +914,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
         
         hedge_eth = 0
         hedge_usdc = 0
+        hedge_price = current_price  # По умолчанию используем текущую цену
         
         if self.hedge_enabled.get():
             hedge_eth = -hedge_amount
@@ -915,9 +926,93 @@ class UniswapV3HedgeCalculator(tk.Tk):
         
         # Добавляем маркер цены выхода на график
         if exit_price > 0:
+            # Расширяем диапазон отображения: 50% вниз от нижнего канала и 20% вверх от верхнего канала
+            price_min = lower_bound * 0.5
+            price_max = upper_bound * 1.2
+            
+            # Получаем данные графика
+            price_range = np.linspace(price_min, price_max, 1000)
+            
+            # Получаем первоначальную сумму пула
+            try:
+                total_pool_value = float(str(self.total_pool_value.get()).replace(',', '.'))
+            except:
+                total_pool_value = 10000  # значение по умолчанию
+            
+            # Получаем комиссию
+            try:
+                hedge_fee_percent = float(str(self.hedge_fee_percent.get()).replace(',', '.')) / 100.0
+            except:
+                hedge_fee_percent = 0.002  # 0.2% по умолчанию
+            
+            # Расчет значений для пометки пересечений
+            # Вычисляем значения в точке выхода
+            if exit_price < lower_bound:
+                # Все в ETH
+                exit_eth = liquidity * (1/math.sqrt(lower_bound) - 1/math.sqrt(upper_bound))
+                exit_usdc = 0
+            elif exit_price > upper_bound:
+                # Все в USDC
+                exit_eth = 0
+                exit_usdc = liquidity * (math.sqrt(upper_bound) - math.sqrt(lower_bound))
+            else:
+                # В диапазоне
+                exit_eth = liquidity * (1/math.sqrt(exit_price) - 1/math.sqrt(upper_bound))
+                exit_usdc = liquidity * (math.sqrt(exit_price) - math.sqrt(lower_bound))
+            
+            # Базовая стоимость позиции
+            exit_base_value = exit_eth * exit_price + exit_usdc
+            
+            # Расчет комиссии хеджа
+            hedge_fee = abs(hedge_eth) * hedge_price * hedge_fee_percent
+            
+            # Расчет P&L хеджа при цене выхода
+            hedge_price_diff = hedge_price - exit_price
+            exit_hedge_pnl = -hedge_eth * hedge_price_diff - hedge_fee
+            
+            # Общая стоимость с хеджем
+            exit_total_value = exit_base_value + exit_hedge_pnl
+            
+            # Смещаем значение P&L хеджа для отображения на графике
+            if abs(hedge_eth) > 0.0001:  # Проверяем, что хедж активен
+                exit_hedge_pnl_adjusted = total_pool_value + exit_hedge_pnl
+            else:
+                exit_hedge_pnl_adjusted = total_pool_value  # Если хедж не активен, используем исходное значение
+            
             # Добавляем линию цены выхода
             exit_line = self.hedge_ax2.axvline(x=exit_price, color='red', linestyle='-.', 
                                              linewidth=2, label='Цена выхода')
+            
+            # Добавляем аннотацию точек пересечений с ценой выхода
+            # Точки пересечения с кривой без хеджа (над линией)
+            self.hedge_ax2.plot([exit_price], [exit_base_value], 'ro', markersize=7)
+            self.hedge_ax2.annotate(f"Базовая позиция: {exit_base_value:.0f} USDC", 
+                                xy=(exit_price, exit_base_value),
+                                xytext=(10, 30),  # Увеличиваем отступ вверх
+                                textcoords="offset points",
+                                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"),
+                                bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
+                                fontsize=10)  # Увеличиваем размер шрифта
+            
+            # Точки пересечения с кривой с хеджем (под линией)
+            self.hedge_ax2.plot([exit_price], [exit_total_value], 'go', markersize=7)
+            self.hedge_ax2.annotate(f"С хеджем: {exit_total_value:.0f} USDC", 
+                                xy=(exit_price, exit_total_value),
+                                xytext=(10, -30),  # Отступ вниз
+                                textcoords="offset points",
+                                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"),
+                                bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
+                                fontsize=10)  # Увеличиваем размер шрифта
+            
+            # Точки пересечения с кривой P&L хеджа (в сторону)
+            self.hedge_ax2.plot([exit_price], [exit_hedge_pnl_adjusted], 'yo', markersize=6, alpha=0.8)
+            self.hedge_ax2.annotate(f"P&L хеджа: {exit_hedge_pnl:.0f} USDC", 
+                                xy=(exit_price, exit_hedge_pnl_adjusted),
+                                xytext=(40, 0),  # Смещаем подпись вправо
+                                textcoords="offset points",
+                                arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"),
+                                bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
+                                fontsize=10)  # Увеличиваем размер шрифта
             
             # Обновляем легенду графика с увеличенным размером шрифта
             self.hedge_ax2.legend(loc='best', fontsize=10, framealpha=0.7)
