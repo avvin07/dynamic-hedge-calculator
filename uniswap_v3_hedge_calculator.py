@@ -6,6 +6,11 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import math
 import locale
 from tkinter import messagebox
+from tkinter import filedialog
+import pandas as pd
+import os
+import re
+import traceback
 
 # Настройка локализации для поддержки разделителей как "," так и "."
 try:
@@ -1262,9 +1267,17 @@ class UniswapV3HedgeCalculator(tk.Tk):
         fee_entry.grid(row=0, column=3, padx=5, pady=5, sticky="w")
         fee_entry.insert(0, str(self.hedge_fee_percent.get()))
         
-        # Фрейм для ввода цен
-        price_frame = ttk.LabelFrame(self.dynamic_tab, text="Последовательность цен")
-        price_frame.pack(fill="x", padx=10, pady=5)
+        # Создаем верхний контейнер для размещения фреймов ввода цен и итоговых результатов
+        top_container = ttk.Frame(self.dynamic_tab)
+        top_container.pack(fill="x", padx=10, pady=5)
+        
+        # Настраиваем веса для размещения элементов
+        top_container.columnconfigure(0, weight=2)  # Для фрейма ввода цен
+        top_container.columnconfigure(1, weight=1)  # Для фрейма итоговых результатов
+
+        # Фрейм для ввода цен (слева)
+        price_frame = ttk.LabelFrame(top_container, text="Последовательность цен")
+        price_frame.grid(row=0, column=0, padx=(0, 5), pady=5, sticky="nsew")
         
         # Создаем контейнер для полей ввода цен
         self.dynamic_price_container = ttk.Frame(price_frame)
@@ -1277,18 +1290,83 @@ class UniswapV3HedgeCalculator(tk.Tk):
         # Добавляем начальные поля для цен
         self.add_initial_price_fields()
         
+        # Фрейм для итоговых результатов (справа)
+        self.summary_frame = ttk.LabelFrame(top_container, text="Итоговые результаты")
+        self.summary_frame.grid(row=0, column=1, padx=(5, 0), pady=5, sticky="nsew")
+        
+        # Переменные для хранения итоговых результатов
+        self.summary_vars = {
+            "delta": tk.StringVar(value="0.0000"),
+            "base_pnl": tk.StringVar(value="0.00"),
+            "hedge_pnl": tk.StringVar(value="0.00"),
+            "total_pnl": tk.StringVar(value="0.00"),
+            "fee": tk.StringVar(value="0.00"),
+            "net_pnl": tk.StringVar(value="0.00")
+        }
+        
+        # Добавляем элементы отображения итоговых результатов
+        ttk.Label(self.summary_frame, text="Итоговая дельта:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(self.summary_frame, textvariable=self.summary_vars["delta"]).grid(row=0, column=1, padx=5, pady=2, sticky="e")
+        
+        ttk.Label(self.summary_frame, text="P&L основной позиции:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        self.base_pnl_label = ttk.Label(self.summary_frame, textvariable=self.summary_vars["base_pnl"])
+        self.base_pnl_label.grid(row=1, column=1, padx=5, pady=2, sticky="e")
+        
+        ttk.Label(self.summary_frame, text="P&L хеджа:").grid(row=2, column=0, padx=5, pady=2, sticky="w")
+        self.hedge_pnl_label = ttk.Label(self.summary_frame, textvariable=self.summary_vars["hedge_pnl"])
+        self.hedge_pnl_label.grid(row=2, column=1, padx=5, pady=2, sticky="e")
+        
+        ttk.Label(self.summary_frame, text="Общий P&L:").grid(row=3, column=0, padx=5, pady=2, sticky="w")
+        self.total_pnl_label = ttk.Label(self.summary_frame, textvariable=self.summary_vars["total_pnl"], font=('Helvetica', 9, 'bold'))
+        self.total_pnl_label.grid(row=3, column=1, padx=5, pady=2, sticky="e")
+        
+        ttk.Label(self.summary_frame, text="Общая комиссия:").grid(row=4, column=0, padx=5, pady=2, sticky="w")
+        ttk.Label(self.summary_frame, textvariable=self.summary_vars["fee"]).grid(row=4, column=1, padx=5, pady=2, sticky="e")
+        
+        ttk.Label(self.summary_frame, text="Чистый результат:").grid(row=5, column=0, padx=5, pady=2, sticky="w")
+        self.net_pnl_label = ttk.Label(self.summary_frame, textvariable=self.summary_vars["net_pnl"], font=('Helvetica', 9, 'bold'))
+        self.net_pnl_label.grid(row=5, column=1, padx=5, pady=2, sticky="e")
+        
+        # Кнопки для расчета и экспорта результатов
+        buttons_frame = ttk.Frame(self.dynamic_tab)
+        buttons_frame.pack(fill="x", padx=10, pady=5)
+        
         # Кнопка расчета
-        calc_button = ttk.Button(self.dynamic_tab, text="Рассчитать динамический хедж", 
+        calc_button = ttk.Button(buttons_frame, text="Рассчитать динамический хедж", 
                                command=self.calculate_dynamic_hedge, width=30)
-        calc_button.pack(pady=10)
+        calc_button.pack(side="left", padx=5, pady=5)
+        
+        # Кнопка экспорта в Excel
+        export_button = ttk.Button(buttons_frame, text="Экспорт в Excel", 
+                                command=self.export_to_excel, width=15)
+        export_button.pack(side="left", padx=5, pady=5)
         
         # Фрейм для результатов
         self.dynamic_results_frame = ttk.LabelFrame(self.dynamic_tab, text="Результаты")
         self.dynamic_results_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
-        # Текстовое поле для вывода результатов
-        self.dynamic_results_text = tk.Text(self.dynamic_results_frame, height=10)
-        self.dynamic_results_text.pack(fill="both", expand=True, padx=5, pady=5)
+        # Улучшенное текстовое поле с прокруткой для вывода результатов
+        text_container = ttk.Frame(self.dynamic_results_frame)
+        text_container.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Добавляем вертикальную полосу прокрутки
+        scrollbar_y = ttk.Scrollbar(text_container)
+        scrollbar_y.pack(side="right", fill="y")
+        
+        # Добавляем горизонтальную полосу прокрутки
+        scrollbar_x = ttk.Scrollbar(text_container, orient="horizontal")
+        scrollbar_x.pack(side="bottom", fill="x")
+        
+        # Текстовое поле с поддержкой прокрутки и монопропорциональным шрифтом
+        self.dynamic_results_text = tk.Text(text_container, height=10, wrap="none",
+                                     xscrollcommand=scrollbar_x.set,
+                                     yscrollcommand=scrollbar_y.set,
+                                     font=("Courier New", 10))
+        self.dynamic_results_text.pack(fill="both", expand=True)
+        
+        # Привязываем полосы прокрутки к текстовому полю
+        scrollbar_y.config(command=self.dynamic_results_text.yview)
+        scrollbar_x.config(command=self.dynamic_results_text.xview)
         
         # Фрейм для графиков
         self.dynamic_plot_frame = ttk.LabelFrame(self.dynamic_tab, text="Графики результатов")
@@ -1572,7 +1650,6 @@ class UniswapV3HedgeCalculator(tk.Tk):
             
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при расчете динамического хеджирования: {str(e)}")
-            import traceback
             traceback.print_exc()
 
     def form_price_sequence(self, entry_price, user_prices):
@@ -1628,10 +1705,13 @@ class UniswapV3HedgeCalculator(tk.Tk):
         """Отображает результаты динамического хеджирования в текстовом поле"""
         self.dynamic_results_text.delete(1.0, tk.END)
         
-        # Заголовок
-        header = "Шаг\tЦена\t\tETH в пуле\tUSDC в пуле\tСтоимость пула\tФьючерс\tДельта\tИзменение\tКомиссия\tP&L хеджа\tP&L базы\tОбщий P&L\tСтратегия\n"
+        # Форматируем заголовок таблицы с использованием моноширинного шрифта
+        header = "{:<5} {:<10} {:<10} {:<10} {:<12} {:<10} {:<8} {:<10} {:<10} {:<10} {:<10} {:<10} {:<15}\n".format(
+            "Шаг", "Цена", "ETH пул", "USDC пул", "Стоим. пула", "Фьючерс", "Дельта", "Изменение", 
+            "Комиссия", "P&L хеджа", "P&L базы", "Общий P&L", "Стратегия"
+        )
         self.dynamic_results_text.insert(tk.END, header)
-        self.dynamic_results_text.insert(tk.END, "-" * 180 + "\n")
+        self.dynamic_results_text.insert(tk.END, "-" * 150 + "\n")
         
         # Данные
         prev_price = None
@@ -1675,12 +1755,25 @@ class UniswapV3HedgeCalculator(tk.Tk):
             cumulative_hedge_pnl = result.get('cumulative_hedge_pnl', 0)
             cumulative_hedge_sign = "+" if cumulative_hedge_pnl > 0 else ""
             
-            # Форматируем строку таблицы с расширенными данными
-            row = (f"{result['step']}\t{result['price']:.2f} {price_indicator}\t" +
-                  f"{result['pool_eth']:.4f}\t{result['pool_usdc']:.4f}\t{result['pool_value']:.2f}\t" +
-                  f"{result['hedge_eth']:.4f}\t{result['delta']:.4f}\t{result['hedge_change']:.4f} {hedge_indicator}\t" +
-                  f"{result['fee']:.2f}\t{hedge_pnl_sign}{hedge_pnl:.2f}\t{base_pnl_sign}{base_pnl:.2f}\t{total_pnl_sign}{total_pnl:.2f}\t{strategy_note}\n")
+            # Форматируем строку таблицы с монопропорциональным шрифтом для лучшего выравнивания
+            row_format = "{:<5} {:<10} {:<10} {:<10} {:<12} {:<10} {:<8} {:<10} {:<10} {:<10} {:<10} {:<10} {:<15}\n"
+            row = row_format.format(
+                result['step'],
+                f"{result['price']:.2f} {price_indicator}",
+                f"{result['pool_eth']:.4f}",
+                f"{result['pool_usdc']:.2f}",
+                f"{result['pool_value']:.2f}",
+                f"{result['hedge_eth']:.4f}",
+                f"{result['delta']:.4f}",
+                f"{result['hedge_change']:.4f} {hedge_indicator}",
+                f"{result['fee']:.2f}",
+                f"{hedge_pnl_sign}{hedge_pnl:.2f}",
+                f"{base_pnl_sign}{base_pnl:.2f}",
+                f"{total_pnl_sign}{total_pnl:.2f}",
+                strategy_note
+            )
             
+            # Применяем теги для цветового выделения
             self.dynamic_results_text.insert(tk.END, row)
         
         # Итоговые результаты
@@ -1688,7 +1781,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
             last_result = self.dynamic_results[-1]
             
             self.dynamic_results_text.insert(tk.END, "\nИтоговые результаты:\n")
-            self.dynamic_results_text.insert(tk.END, f"Итоговая дельта: {last_result['delta']:.4f}\n")
+            self.dynamic_results_text.insert(tk.END, "-" * 50 + "\n")
             
             # Получаем начальные и конечные значения для расчета результатов
             initial_eth = self.dynamic_results[0]['pool_eth']
@@ -1706,7 +1799,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
             
             # Изменение состава пула
             self.dynamic_results_text.insert(tk.END, f"   Начальное состояние пула: {initial_eth:.4f} ETH + {initial_usdc:.2f} USDC = {initial_value:.2f} USDC\n")
-            self.dynamic_results_text.insert(tk.END, f"   Конечное состояние пула: {final_eth:.4f} ETH + {final_usdc:.2f} USDC = {final_value:.2f} USDC\n")
+            self.dynamic_results_text.insert(tk.END, f"   Конечное состояние пула:  {final_eth:.4f} ETH + {final_usdc:.2f} USDC = {final_value:.2f} USDC\n")
             
             # P&L хеджа
             cumulative_hedge_pnl = last_result['cumulative_hedge_pnl']
@@ -1724,8 +1817,12 @@ class UniswapV3HedgeCalculator(tk.Tk):
             self.dynamic_results_text.insert(tk.END, f"Общий P&L: {total_pnl_sign}{total_pnl:.2f} USDC\n")
             self.dynamic_results_text.insert(tk.END, f"Чистый результат: {net_sign}{net_result:.2f} USDC\n")
             
+            # Обновляем данные в блоке итоговых результатов
+            self.update_summary_values(last_result, net_result)
+            
             # Добавляем пояснения
             self.dynamic_results_text.insert(tk.END, "\nПояснения:\n")
+            self.dynamic_results_text.insert(tk.END, "-" * 50 + "\n")
             self.dynamic_results_text.insert(tk.END, "↑ в столбце Цена - цена выросла\n")
             self.dynamic_results_text.insert(tk.END, "↓ в столбце Цена - цена упала\n")
             self.dynamic_results_text.insert(tk.END, "↑ в столбце Изменение - уменьшение размера шорта (закрытие части позиции)\n")
@@ -1733,6 +1830,36 @@ class UniswapV3HedgeCalculator(tk.Tk):
             self.dynamic_results_text.insert(tk.END, "При падении цены: прибыль по хеджу (шорту), убыток по основной позиции\n")
             self.dynamic_results_text.insert(tk.END, "При росте цены: убыток по хеджу (шорту), прибыль по основной позиции\n")
             self.dynamic_results_text.insert(tk.END, "Без изменений: когда объем ETH в пуле и хедж не меняется, P&L хеджа на этом шаге = 0\n")
+    
+    def update_summary_values(self, last_result, net_result):
+        """Обновляет значения в блоке итоговых результатов"""
+        # Обновляем переменные для отображения
+        delta_value = last_result['delta']
+        self.summary_vars["delta"].set(f"{delta_value:.4f}")
+        
+        base_pnl = last_result['base_pnl']
+        base_pnl_sign = "+" if base_pnl > 0 else ""
+        self.summary_vars["base_pnl"].set(f"{base_pnl_sign}{base_pnl:.2f}")
+        
+        cumulative_hedge_pnl = last_result['cumulative_hedge_pnl']
+        hedge_sign = "+" if cumulative_hedge_pnl > 0 else ""
+        self.summary_vars["hedge_pnl"].set(f"{hedge_sign}{cumulative_hedge_pnl:.2f}")
+        
+        total_pnl = last_result['total_pnl']
+        total_pnl_sign = "+" if total_pnl > 0 else ""
+        self.summary_vars["total_pnl"].set(f"{total_pnl_sign}{total_pnl:.2f}")
+        
+        fee = last_result['total_fee']
+        self.summary_vars["fee"].set(f"{fee:.2f}")
+        
+        net_sign = "+" if net_result > 0 else ""
+        self.summary_vars["net_pnl"].set(f"{net_sign}{net_result:.2f}")
+        
+        # Устанавливаем цвета для значений (зеленый для положительных, красный для отрицательных)
+        self.base_pnl_label.config(foreground="green" if base_pnl > 0 else "red" if base_pnl < 0 else "black")
+        self.hedge_pnl_label.config(foreground="green" if cumulative_hedge_pnl > 0 else "red" if cumulative_hedge_pnl < 0 else "black")
+        self.total_pnl_label.config(foreground="green" if total_pnl > 0 else "red" if total_pnl < 0 else "black")
+        self.net_pnl_label.config(foreground="green" if net_result > 0 else "red" if net_result < 0 else "black")
     
     def plot_dynamic_results(self):
         """Отображает результаты динамического хеджирования на графике"""
@@ -1869,6 +1996,154 @@ class UniswapV3HedgeCalculator(tk.Tk):
             messagebox.showerror("Ошибка", f"Ошибка при построении графика: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def export_to_excel(self):
+        """Экспортирует результаты динамического хеджирования в Excel-файл"""
+        try:
+            # Проверяем, есть ли результаты для экспорта
+            if not self.dynamic_results:
+                messagebox.showwarning("Предупреждение", "Нет данных для экспорта. Сначала выполните расчет.")
+                return
+            
+            # Открываем диалог для выбора места сохранения файла
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+                title="Сохранить как"
+            )
+            
+            # Если пользователь отменил сохранение, выходим
+            if not file_path:
+                return
+            
+            # Создаем DataFrame для результатов
+            data = []
+            for result in self.dynamic_results:
+                data.append({
+                    "Шаг": result["step"],
+                    "Цена": result["price"],
+                    "ETH в пуле": result["pool_eth"],
+                    "USDC в пуле": result["pool_usdc"],
+                    "Стоимость пула": result["pool_value"],
+                    "Фьючерс (ETH)": result["hedge_eth"],
+                    "Общая дельта": result["delta"],
+                    "Изменение фьючерса": result["hedge_change"],
+                    "Комиссия": result["fee"],
+                    "P&L хеджа шаг": result["hedge_pnl"],
+                    "P&L хеджа накопл.": result["cumulative_hedge_pnl"],
+                    "P&L базы": result["base_pnl"],
+                    "Общий P&L": result["total_pnl"],
+                    "Направление цены": result["price_direction"],
+                    "Тип операции": result.get("operation_type", "")
+                })
+            
+            results_df = pd.DataFrame(data)
+            
+            # Создаем DataFrame для итоговых результатов
+            summary_data = [{
+                "Параметр": "Итоговая дельта",
+                "Значение": self.dynamic_results[-1]["delta"]
+            }, {
+                "Параметр": "P&L основной позиции",
+                "Значение": self.dynamic_results[-1]["base_pnl"]
+            }, {
+                "Параметр": "P&L хеджа",
+                "Значение": self.dynamic_results[-1]["cumulative_hedge_pnl"]
+            }, {
+                "Параметр": "Общий P&L",
+                "Значение": self.dynamic_results[-1]["total_pnl"]
+            }, {
+                "Параметр": "Общая комиссия",
+                "Значение": self.dynamic_results[-1]["total_fee"]
+            }, {
+                "Параметр": "Чистый результат",
+                "Значение": self.dynamic_results[-1]["total_pnl"] - self.dynamic_results[-1]["total_fee"]
+            }]
+            
+            summary_df = pd.DataFrame(summary_data)
+            
+            # Создаем объект writer для записи в Excel
+            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                # Записываем данные на разные листы
+                results_df.to_excel(writer, sheet_name="Результаты", index=False)
+                summary_df.to_excel(writer, sheet_name="Итоги", index=False)
+                
+                # Получаем объекты рабочих листов для форматирования
+                workbook = writer.book
+                
+                # Форматируем лист с результатами
+                results_sheet = writer.sheets["Результаты"]
+                for column in results_sheet.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        if cell.value:
+                            cell_length = len(str(cell.value))
+                            max_length = max(max_length, cell_length)
+                    adjusted_width = (max_length + 2)
+                    results_sheet.column_dimensions[column_letter].width = adjusted_width
+                
+                # Форматируем лист с итогами
+                summary_sheet = writer.sheets["Итоги"]
+                summary_sheet.column_dimensions['A'].width = 25
+                summary_sheet.column_dimensions['B'].width = 15
+            
+            messagebox.showinfo("Успешно", f"Данные успешно экспортированы в файл:\n{file_path}")
+            
+            # Открываем файл (если ОС это поддерживает)
+            try:
+                os.startfile(file_path)  # Работает только на Windows
+            except:
+                pass  # Игнорируем ошибку, если не удалось открыть файл
+                
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при экспорте данных: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def calculate_eth_amount(self, current_eth, current_usdc, current_price, new_price, price_range):
+        """
+        Рассчитывает новое количество ETH в пуле при изменении цены
+        с учетом особенностей Uniswap V3
+        
+        Args:
+            current_eth (float): Текущее количество ETH в пуле
+            current_usdc (float): Текущее количество USDC в пуле
+            current_price (float): Текущая цена ETH в USDC
+            new_price (float): Новая цена ETH в USDC
+            price_range (dict): Словарь с ключами 'lower' и 'upper' для границ диапазона
+            
+        Returns:
+            float: Новое количество ETH в пуле
+        """
+        # Используем существующий метод calculate_delta_for_price, который уже правильно
+        # рассчитывает ETH с учетом особенностей Uniswap V3
+        new_eth = self.calculate_delta_for_price(new_price)
+        return new_eth
+
+    def calculate_uniswap_v3_delta(self, price_sqrt, lower_bound_sqrt, upper_bound_sqrt):
+        """
+        Рассчитывает дельту (чувствительность к изменению цены) для позиции в Uniswap V3
+        
+        Args:
+            price_sqrt (float): Квадратный корень из текущей цены
+            lower_bound_sqrt (float): Квадратный корень из нижней границы ценового диапазона
+            upper_bound_sqrt (float): Квадратный корень из верхней границы ценового диапазона
+            
+        Returns:
+            float: Значение дельты от 0 до 1
+        """
+        # За пределами диапазона
+        if price_sqrt <= lower_bound_sqrt:
+            return 1.0  # 100% ETH
+        elif price_sqrt >= upper_bound_sqrt:
+            return 0.0  # 0% ETH (все в USDC)
+        
+        # В пределах диапазона - рассчитываем дельту по формуле
+        # Формула для дельты в Uniswap V3: (sqrt(P_upper) - sqrt(P)) / (sqrt(P_upper) - sqrt(P_lower))
+        delta = (upper_bound_sqrt - price_sqrt) / (upper_bound_sqrt - lower_bound_sqrt)
+        
+        return delta
 
 if __name__ == "__main__":
     app = UniswapV3HedgeCalculator()

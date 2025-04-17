@@ -555,6 +555,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
             total_fee = initial_fee
             prev_hedge = initial_hedge
             prev_price = current_price
+            prev_pool_eth = initial_eth  # Запоминаем предыдущий объем ETH в пуле
             
             for step_idx, price in enumerate(prices_sequence[1:], start=1):
                 # Определяем направление движения цены
@@ -566,13 +567,19 @@ class UniswapV3HedgeCalculator(tk.Tk):
                 # Рассчитываем необходимую дельту хеджа для нейтральной позиции
                 required_hedge = -pool_eth
                 
+                # ИСПРАВЛЕНИЕ: Проверяем, изменился ли объем ETH в основной позиции
+                eth_change = pool_eth - prev_pool_eth
+                pool_eth_changed = abs(eth_change) > 0.0001  # С учетом погрешности вычислений
+                
                 # Изменение хеджа - всегда ребалансируем, но по-разному в зависимости от направления
                 hedge_change = required_hedge - prev_hedge
                 hedge_eth = required_hedge  # Всегда устанавливаем нейтральную позицию
                 
                 # Тип операции (увеличение или сокращение шорта)
                 operation_type = ""
-                if hedge_change > 0:
+                if abs(hedge_change) < 0.0001:  # С учетом погрешности вычислений
+                    operation_type = "no_change"  # Нет изменения хеджа
+                elif hedge_change > 0:
                     operation_type = "reduce_short"  # Сокращение шорта (закрытие части позиции)
                 elif hedge_change < 0:
                     operation_type = "increase_short"  # Увеличение шорта
@@ -580,31 +587,36 @@ class UniswapV3HedgeCalculator(tk.Tk):
                 # Общая дельта
                 total_delta = pool_eth + hedge_eth
                 
-                # Комиссия за изменение хеджа
-                fee = abs(hedge_change) * price * fee_percent
+                # Комиссия за изменение хеджа (только если реально меняем позицию)
+                fee = 0
+                if abs(hedge_change) >= 0.0001:
+                    fee = abs(hedge_change) * price * fee_percent
                 total_fee += fee
                 
-                # ИСПРАВЛЕННЫЙ РАСЧЕТ P&L хеджа для этого шага
+                # ИСПРАВЛЕННЫЙ РАСЧЕТ P&L ХЕДЖА:
+                # 1. P&L считаем только при фактическом изменении позиции
+                # 2. Если позиция не меняется, P&L для этого шага = 0
                 
-                # Для шорта (отрицательное количество ETH):
-                # - При падении цены (prev_price > price): прибыль = размер_шорта * (предыдущая_цена - текущая_цена)
-                # - При росте цены (prev_price < price): убыток = размер_шорта * (предыдущая_цена - текущая_цена)
+                step_pnl = 0
                 
-                # Для оставшейся части позиции (нереализованный P&L)
-                # Для шорта (prev_hedge < 0)
-                unrealized_pnl = 0
-                if prev_hedge < 0:  # У нас шорт (отрицательные значения ETH)
-                    # При падении цены: положительный P&L, при росте: отрицательный
-                    unrealized_pnl = abs(prev_hedge) * (prev_price - price)
-                
-                # Для измененной части позиции (если закрываем часть позиции)
-                realized_pnl = 0
-                if hedge_change > 0 and prev_hedge < 0:  # Если уменьшаем шорт
-                    # Прибыль/убыток от закрытия части позиции
-                    realized_pnl = hedge_change * (prev_price - price)
-                
-                # Общий P&L для данного шага
-                step_pnl = unrealized_pnl + realized_pnl
+                if abs(hedge_change) >= 0.0001:
+                    # Для оставшейся части позиции (нереализованный P&L)
+                    # Для шорта (prev_hedge < 0)
+                    unrealized_pnl = 0
+                    
+                    # Мы учитываем P&L от изменения цены только если меняем объем позиции
+                    if prev_hedge < 0:  # У нас шорт (отрицательные значения ETH)
+                        # При падении цены: положительный P&L, при росте: отрицательный
+                        unrealized_pnl = abs(prev_hedge) * (prev_price - price)
+                    
+                    # Для измененной части позиции (если закрываем часть позиции)
+                    realized_pnl = 0
+                    if hedge_change > 0 and prev_hedge < 0:  # Если уменьшаем шорт
+                        # Прибыль/убыток от закрытия части позиции
+                        realized_pnl = hedge_change * (prev_price - price)
+                    
+                    # Общий P&L для данного шага
+                    step_pnl = unrealized_pnl + realized_pnl
                 
                 # Накопленный P&L
                 cumulative_pnl += step_pnl
@@ -622,12 +634,14 @@ class UniswapV3HedgeCalculator(tk.Tk):
                     "hedge_pnl": step_pnl,
                     "cumulative_pnl": cumulative_pnl,
                     "price_direction": price_direction,
-                    "operation_type": operation_type
+                    "operation_type": operation_type,
+                    "eth_changed": pool_eth_changed
                 })
                 
                 # Обновляем значения для следующей итерации
                 prev_hedge = hedge_eth
                 prev_price = price
+                prev_pool_eth = pool_eth
             
             # Отображаем результаты
             self.display_dynamic_results()
@@ -718,14 +732,18 @@ class UniswapV3HedgeCalculator(tk.Tk):
                     price_indicator = "↑"
                     if result.get('operation_type') == "reduce_short":
                         strategy_note = "Сокращение шорта"
+                    elif result.get('operation_type') == "no_change":
+                        strategy_note = "Без изменений"
                 elif result['price'] < prev_price:
                     price_indicator = "↓"
                     if result.get('operation_type') == "increase_short":
                         strategy_note = "Увеличение шорта"
+                    elif result.get('operation_type') == "no_change":
+                        strategy_note = "Без изменений"
                 
-                if result['hedge_change'] > 0:
+                if result['hedge_change'] > 0.0001:
                     hedge_indicator = "↑" # Уменьшаем размер шорта (закрываем часть)
-                elif result['hedge_change'] < 0:
+                elif result['hedge_change'] < -0.0001:
                     hedge_indicator = "↓" # Увеличиваем размер шорта
             
             prev_price = result['price']
@@ -756,6 +774,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
             self.dynamic_results_text.insert(tk.END, "↓ в столбце Изменение - увеличение размера шорта\n")
             self.dynamic_results_text.insert(tk.END, "При падении цены: прибыль по хеджу (шорту), убыток по основной позиции\n")
             self.dynamic_results_text.insert(tk.END, "При росте цены: убыток по хеджу (шорту), прибыль по основной позиции\n")
+            self.dynamic_results_text.insert(tk.END, "Без изменений: когда объем ETH в пуле и хедж не меняется, P&L на этом шаге = 0\n")
     
     def plot_dynamic_results(self):
         """Отображает результаты динамического хеджирования на графике"""
@@ -805,6 +824,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
         # Массивы для хранения индексов точек разных операций
         increase_short_points = []  # Точки увеличения шорта (при падении цены)
         reduce_short_points = []    # Точки сокращения шорта (при росте цены)
+        no_change_points = []       # Точки без изменений
         
         # Массивы для стрелок направления P&L
         down_price_points = []      # Участки падения цены
@@ -828,6 +848,8 @@ class UniswapV3HedgeCalculator(tk.Tk):
                     reduce_short_points.append(i)
                 elif result.get('operation_type') == "increase_short":
                     increase_short_points.append(i)
+                elif result.get('operation_type') == "no_change":
+                    no_change_points.append(i)
             
             # ИСПРАВЛЕННЫЙ РАСЧЕТ P&L ПОЗИЦИИ:
             
@@ -878,6 +900,12 @@ class UniswapV3HedgeCalculator(tk.Tk):
             self.dynamic_ax.plot(steps[idx], hedge_pnl[idx], 'rv', markersize=9, alpha=0.7,
                             label='Увеличение шорта' if idx == increase_short_points[0] else "")
             self.dynamic_ax.plot(steps[idx], combined_pnl[idx], 'bv', markersize=9, alpha=0.7)
+            
+        for idx in no_change_points:
+            # Точки без изменений позиции
+            self.dynamic_ax.plot(steps[idx], hedge_pnl[idx], 'rs', markersize=8, alpha=0.7,
+                            label='Без изменений' if idx == no_change_points[0] else "")
+            self.dynamic_ax.plot(steps[idx], combined_pnl[idx], 'bs', markersize=8, alpha=0.7)
         
         # Аннотации с ценами и значениями P&L
         for i, step in enumerate(steps):
@@ -930,7 +958,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.dynamic_ax.legend(loc='best', fontsize=9)
         
         # Добавляем пояснение к маркерам и движению цены
-        self.dynamic_ax.annotate("△ - сокращение шорта (при росте цены)\n▽ - увеличение шорта (при падении цены)", 
+        self.dynamic_ax.annotate("△ - сокращение шорта, ▽ - увеличение шорта, □ - без изменений", 
                               xy=(0.5, 0.01),
                               xycoords='figure fraction',
                               ha='center',
@@ -939,7 +967,8 @@ class UniswapV3HedgeCalculator(tk.Tk):
         # Добавляем текстовое пояснение взаимосвязи движения цены и P&L
         self.dynamic_ax.text(0.02, 0.02, 
                           "При падении цены: ↑ прибыль по хеджу, ↓ убыток по основной позиции\n"
-                          "При росте цены: ↓ убыток по хеджу, ↑ прибыль по основной позиции",
+                          "При росте цены: ↓ убыток по хеджу, ↑ прибыль по основной позиции\n"
+                          "Без изменений объема ETH: P&L для этого шага = 0",
                           transform=self.dynamic_ax.transAxes,
                           fontsize=8,
                           bbox=dict(facecolor='white', alpha=0.7, boxstyle='round,pad=0.5'))
