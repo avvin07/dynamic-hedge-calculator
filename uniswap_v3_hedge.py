@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import math
 import locale
-from tkinter import messagebox
+import messagebox
 
 # Настройка локализации для поддержки разделителей как "," так и "."
 try:
@@ -28,12 +28,9 @@ class UniswapV3HedgeCalculator(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Калькулятор хеджирования Uniswap V3")
-        # Изменяем размер окна на более книжный формат и увеличиваем на 20%
-        self.geometry("960x1200")  # Было 800x1000, увеличено на 20%
+        # Изменяем размер окна на более книжный формат
+        self.geometry("800x1000")
         self.configure(bg="#f0f0f0")
-        
-        # Добавляем обработчик изменения размера окна
-        self.bind("<Configure>", self.on_window_resize)
         
         # Initialize variables
         self.current_price = tk.DoubleVar(value=1616)
@@ -177,10 +174,6 @@ class UniswapV3HedgeCalculator(tk.Tk):
         update_button = ttk.Button(self.results_frame, text="Обновить графики", command=self.refresh_plots, width=20)
         update_button.grid(row=5, column=2, rowspan=2, columnspan=2, pady=10, padx=20, sticky="nsew")
         
-        # Настройка главного контейнера для растяжения
-        self.main_tab.rowconfigure(2, weight=1)
-        self.main_tab.columnconfigure(0, weight=1)
-        
         # Create plot frame for main position
         self.plot_frame = ttk.LabelFrame(self.main_tab, text="Визуализация диапазона ликвидности", padding=10)
         self.plot_frame.pack(fill="both", expand=True, padx=20, pady=10)
@@ -194,22 +187,9 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
     
     def create_hedge_tab_widgets(self):
-        # Создаем фрейм-контейнер для размещения трех фреймов в одной строке
-        hedge_container = ttk.Frame(self.hedge_tab)
-        hedge_container.pack(fill="both", expand=True, padx=5, pady=5)
-        
-        # Настраиваем веса для столбцов, чтобы они равномерно распределялись
-        hedge_container.columnconfigure(0, weight=1)
-        hedge_container.columnconfigure(1, weight=1)
-        hedge_container.columnconfigure(2, weight=1)
-        
-        # Настроим веса строк: верхняя для настроек, нижняя для графика
-        hedge_container.rowconfigure(0, weight=0)  # Верхняя строка не растягивается
-        hedge_container.rowconfigure(1, weight=1)  # Нижняя строка растягивается
-        
-        # 1. Создаем фрейм настроек хеджирования (слева)
-        hedge_frame = ttk.LabelFrame(hedge_container, text="Настройки хеджирования", padding=10)
-        hedge_frame.grid(row=0, column=0, sticky="nw", padx=5, pady=5)
+        # Create hedge settings frame on hedge tab
+        hedge_frame = ttk.LabelFrame(self.hedge_tab, text="Настройки хеджирования", padding=10)
+        hedge_frame.pack(fill="x", padx=20, pady=10)
         
         # Enable hedge checkbox
         hedge_check = ttk.Checkbutton(hedge_frame, text="Включить хеджирование", variable=self.hedge_enabled, 
@@ -245,9 +225,9 @@ class UniswapV3HedgeCalculator(tk.Tk):
         # Apply hedge button
         ttk.Button(hedge_frame, text="Применить хедж", command=self.calculate).grid(row=5, column=1, pady=10, padx=5)
         
-        # 2. Создаем фрейм результатов хеджирования (посередине)
-        hedge_results_frame = ttk.LabelFrame(hedge_container, text="Результаты хеджирования", padding=10)
-        hedge_results_frame.grid(row=0, column=1, sticky="n", padx=5, pady=5)
+        # Create results frame for hedged position
+        hedge_results_frame = ttk.LabelFrame(hedge_frame, text="Результаты хеджирования", padding=10)
+        hedge_results_frame.pack(fill="x", padx=20, pady=10)
         
         # Hedge results variables
         self.hedge_eth_var = tk.StringVar()
@@ -265,9 +245,9 @@ class UniswapV3HedgeCalculator(tk.Tk):
         ttk.Label(hedge_results_frame, text="В т.ч. комиссия (USDC):").grid(row=3, column=0, sticky="w", pady=5)
         ttk.Label(hedge_results_frame, textvariable=self.hedge_fee_value).grid(row=3, column=1, sticky="w", pady=5)
         
-        # 3. Создаем фрейм анализа результатов (справа)
-        exit_frame = ttk.LabelFrame(hedge_container, text="Анализ результатов при выходе", padding=10)
-        exit_frame.grid(row=0, column=2, sticky="ne", padx=5, pady=5)
+        # Exit price analysis frame
+        exit_frame = ttk.LabelFrame(hedge_frame, text="Анализ результатов при выходе", padding=10)
+        exit_frame.pack(fill="x", padx=20, pady=10)
         
         # Exit price input
         ttk.Label(exit_frame, text="Цена выхода (USDC):").grid(row=0, column=0, sticky="w", pady=5)
@@ -295,14 +275,15 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.total_result_label = ttk.Label(exit_frame, textvariable=self.total_pnl, width=15, font=('Helvetica', 10, 'bold'))
         self.total_result_label.grid(row=4, column=2, sticky="w", pady=5)
         
-        # 4. Создаем фрейм для графика (внизу на всю ширину)
-        self.hedge_plot_frame = ttk.LabelFrame(hedge_container, text="Визуализация хеджированной позиции", padding=10)
-        self.hedge_plot_frame.grid(row=1, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
+        # Create plot frame for hedged position
+        self.hedge_plot_frame = ttk.LabelFrame(hedge_frame, text="Визуализация хеджированной позиции", padding=10)
+        self.hedge_plot_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
         # Create matplotlib figure with subplots for hedged position в книжном формате
+        # Увеличиваем размер фигуры и устанавливаем большие отступы для лучшего отображения
         self.hedge_figure = plt.Figure(figsize=(9, 9), dpi=100)
-        # Один график для сравнения стоимости
-        self.hedge_ax2 = self.hedge_figure.add_subplot(111)
+        # Удаляем верхний график, оставляем только сравнение общей стоимости
+        self.hedge_ax2 = self.hedge_figure.add_subplot(111)  # Один график для сравнения стоимости
         # Отключаем автоматический layout для ручного контроля отступов
         self.hedge_figure.subplots_adjust(left=0.12, right=0.9, top=0.9, bottom=0.1)
         self.hedge_canvas = FigureCanvasTkAgg(self.hedge_figure, self.hedge_plot_frame)
@@ -710,15 +691,6 @@ class UniswapV3HedgeCalculator(tk.Tk):
         # График 2: Общая ценность
         self.ax2.plot(price_range, total_values, linewidth=2, label='Общая стоимость (USDC)', color='#d62728')
         
-        # Получаем общую стоимость пула
-        try:
-            total_pool_value = float(str(self.total_pool_value.get()).replace(',', '.'))
-        except:
-            total_pool_value = 10000  # значение по умолчанию
-            
-        # Добавляем горизонтальную линию для общей стоимости пула
-        h1 = self.ax2.axhline(y=total_pool_value, color='blue', linestyle='--', linewidth=1.5)
-        
         # Устанавливаем тот же диапазон X для второго графика
         self.ax2.set_xlim(price_min, price_max)
         
@@ -751,9 +723,8 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.ax2.set_xlabel('Цена (USDC за ETH)', fontsize=10)
         self.ax2.set_ylabel('Стоимость (USDC)', fontsize=10)
         
-        # Добавляем линию исходной суммы в легенду
-        self.ax2.legend(['Общая стоимость (USDC)', f'Исходная сумма ({total_pool_value} USDC)', 
-                       'Границы диапазона', 'Текущая цена'], 
+        # Возвращаем легенду внутрь графика
+        self.ax2.legend(['Общая стоимость (USDC)', 'Границы диапазона', 'Текущая цена'], 
                       loc='best', fontsize=8, framealpha=0.7)
         
         # Настраиваем оси и форматирование чисел
@@ -930,9 +901,6 @@ class UniswapV3HedgeCalculator(tk.Tk):
         """Полное обновление графиков без выполнения расчётов"""
         # Полностью пересоздаем фигуры и графики для основной вкладки
         plt.close(self.figure)
-        
-        # Используем фиксированные, но разумные размеры для фигур
-        # Это безопаснее, чем динамические размеры, которые могут быть слишком большими
         self.figure = plt.Figure(figsize=(7, 8), dpi=100)
         self.ax1 = self.figure.add_subplot(211)  # Верхний график для ETH и USDC
         self.ax2 = self.figure.add_subplot(212)  # Нижний график для общей ценности
@@ -944,8 +912,6 @@ class UniswapV3HedgeCalculator(tk.Tk):
         
         # Полностью пересоздаем фигуры и графики для хеджирования
         plt.close(self.hedge_figure)
-        
-        # Используем фиксированные размеры для хеджевого графика
         self.hedge_figure = plt.Figure(figsize=(7, 8), dpi=100)
         self.hedge_ax2 = self.hedge_figure.add_subplot(111)  # Один график для сравнения стоимости
         
@@ -956,35 +922,6 @@ class UniswapV3HedgeCalculator(tk.Tk):
         
         # Пересчитываем и перерисовываем графики
         self.calculate()
-    
-    def calculate_delta_for_price(self, price):
-        """Рассчитывает дельту (количество ETH) для заданной цены"""
-        try:
-            # Получаем текущие параметры
-            current_price = float(str(self.current_price.get()).replace(',', '.'))
-            lower_bound = float(str(self.lower_bound.get()).replace(',', '.'))
-            upper_bound = float(str(self.upper_bound.get()).replace(',', '.'))
-            total_pool_value = float(str(self.total_pool_value.get()).replace(',', '.'))
-            
-            # Рассчитываем ликвидность
-            liquidity = total_pool_value / (((1/math.sqrt(current_price) - 1/math.sqrt(upper_bound)) * current_price) + 
-                                           (math.sqrt(current_price) - math.sqrt(lower_bound)))
-            
-            # Если цена ниже нижней границы
-            if price <= lower_bound:
-                return liquidity * (1/math.sqrt(lower_bound) - 1/math.sqrt(upper_bound))
-            
-            # Если цена выше верхней границы
-            elif price >= upper_bound:
-                return 0
-            
-            # Если цена в диапазоне
-            else:
-                return liquidity * (1/math.sqrt(price) - 1/math.sqrt(upper_bound))
-        
-        except Exception as e:
-            print(f"Ошибка при расчете дельты: {str(e)}")
-            return 0
     
     def calculate_grid(self):
         try:
@@ -1128,15 +1065,6 @@ class UniswapV3HedgeCalculator(tk.Tk):
             
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при симуляции: {str(e)}")
-
-    def on_window_resize(self, event):
-        """Обработчик изменения размера окна"""
-        # Проверяем, что ресайз произошел для главного окна, а не для дочерних виджетов
-        if event.widget == self:
-            # Обновляем графики при изменении размера с небольшой задержкой
-            # чтобы не вызывать обновление на каждый пиксель ресайза
-            self.after_cancel(self.resize_timer) if hasattr(self, 'resize_timer') else None
-            self.resize_timer = self.after(200, self.refresh_plots)
 
 if __name__ == "__main__":
     app = UniswapV3HedgeCalculator()
