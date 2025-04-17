@@ -149,6 +149,9 @@ class UniswapV3HedgeCalculator(tk.Tk):
         ttk.Label(input_frame, text="Общая стоимость пула (USDC):").grid(row=0, column=2, sticky="w", padx=20, pady=5)
         ttk.Entry(input_frame, textvariable=self.total_pool_value, width=15).grid(row=0, column=3, pady=5)
         
+        # Buttons for export and import
+        ttk.Button(input_frame, text="Экспорт в CSV", command=self.export_to_csv).grid(row=1, column=2, padx=20, pady=5, sticky="w")
+        
         # Create results frame
         self.results_frame = ttk.LabelFrame(self.main_tab, text="Результаты расчетов", padding=10)
         self.results_frame.pack(fill="x", padx=20, pady=10)
@@ -344,7 +347,10 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.grid_fee.insert(0, "0.2")
         
         # Кнопка расчета
-        ttk.Button(settings_frame, text="Рассчитать сетку", command=self.calculate_grid).grid(row=2, column=0, columnspan=2, pady=5)
+        ttk.Button(settings_frame, text="Рассчитать сетку", command=self.calculate_grid).grid(row=2, column=0, padx=5, pady=5)
+        
+        # Кнопки для экспорта и импорта
+        ttk.Button(settings_frame, text="Экспорт в CSV", command=self.export_to_csv).grid(row=2, column=1, padx=5, pady=5)
         
         # Фрейм для результатов
         results_frame = ttk.LabelFrame(self.grid_tab, text="Результаты")
@@ -362,6 +368,10 @@ class UniswapV3HedgeCalculator(tk.Tk):
         ttk.Label(sim_frame, text="Цены для симуляции (через запятую):").grid(row=0, column=0, padx=5, pady=5)
         self.sim_prices = ttk.Entry(sim_frame, width=50)
         self.sim_prices.grid(row=0, column=1, padx=5, pady=5)
+        
+        # Кнопка для загрузки цен из файла
+        ttk.Button(sim_frame, text="Загрузить из файла", 
+                 command=lambda: self.load_prices_and_display(self.sim_prices)).grid(row=0, column=2, padx=5, pady=5)
         
         # Кнопка запуска симуляции
         ttk.Button(sim_frame, text="Запустить симуляцию", command=self.run_simulation).grid(row=1, column=0, columnspan=2, pady=5)
@@ -1283,9 +1293,17 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.dynamic_price_container = ttk.Frame(price_frame)
         self.dynamic_price_container.pack(fill="x", padx=5, pady=5)
         
+        # Кнопки для управления ценами
+        buttons_container = ttk.Frame(price_frame)
+        buttons_container.pack(fill="x", padx=5, pady=5)
+        
         # Кнопка добавления цены
-        add_price_button = ttk.Button(price_frame, text="Добавить цену", command=self.add_price_field)
-        add_price_button.pack(pady=5)
+        add_price_button = ttk.Button(buttons_container, text="Добавить цену", command=self.add_price_field)
+        add_price_button.pack(side="left", padx=5)
+        
+        # Кнопка загрузки цен из файла
+        load_prices_button = ttk.Button(buttons_container, text="Загрузить из файла", command=self.load_prices_from_file_and_update)
+        load_prices_button.pack(side="left", padx=5)
         
         # Добавляем начальные поля для цен
         self.add_initial_price_fields()
@@ -1336,10 +1354,10 @@ class UniswapV3HedgeCalculator(tk.Tk):
                                command=self.calculate_dynamic_hedge, width=30)
         calc_button.pack(side="left", padx=5, pady=5)
         
-        # Кнопка экспорта в Excel
-        export_button = ttk.Button(buttons_frame, text="Экспорт в Excel", 
-                                command=self.export_to_excel, width=15)
-        export_button.pack(side="left", padx=5, pady=5)
+        # Кнопка экспорта в CSV
+        export_csv_button = ttk.Button(buttons_frame, text="Экспорт в CSV", 
+                                    command=lambda: self.export_to_csv(), width=15)
+        export_csv_button.pack(side="left", padx=5, pady=5)
         
         # Фрейм для результатов
         self.dynamic_results_frame = ttk.LabelFrame(self.dynamic_tab, text="Результаты")
@@ -1372,19 +1390,19 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.dynamic_plot_frame = ttk.LabelFrame(self.dynamic_tab, text="Графики результатов")
         self.dynamic_plot_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
-        # Создаем фигуру для графиков
-        self.dynamic_fig = plt.Figure(figsize=(8, 8), dpi=100)
+        # Создаем фигуру для графиков - увеличиваем размеры
+        self.dynamic_fig = plt.Figure(figsize=(10, 6), dpi=100)
         
         # Создаем только один график для P&L
         self.dynamic_ax = self.dynamic_fig.add_subplot(111)  # График P&L
         
-        # Настраиваем отступы
-        self.dynamic_fig.tight_layout(pad=3.0)
+        # Настраиваем отступы вручную
+        self.dynamic_fig.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.15, hspace=0.4, wspace=0.4)
         
         # Создаем холст для отображения графиков
         self.dynamic_canvas = FigureCanvasTkAgg(self.dynamic_fig, master=self.dynamic_plot_frame)
         self.dynamic_canvas.get_tk_widget().pack(fill="both", expand=True, padx=5, pady=5)
-
+    
     def add_initial_price_fields(self):
         """Инициализирует начальные поля для ввода цен"""
         # Начальная цена - это текущая цена из основной вкладки
@@ -1743,17 +1761,15 @@ class UniswapV3HedgeCalculator(tk.Tk):
             prev_price = result['price']
             
             # Определяем цвет (красный/зеленый) для значений P&L
-            hedge_pnl = result.get('hedge_pnl', 0)
-            hedge_pnl_sign = "+" if hedge_pnl > 0 else ""
+            # Используем накопленный P&L хеджа вместо шагового
+            cumulative_hedge_pnl = result.get('cumulative_hedge_pnl', 0)
+            hedge_pnl_sign = "+" if cumulative_hedge_pnl > 0 else ""
             
             base_pnl = result.get('base_pnl', 0)
             base_pnl_sign = "+" if base_pnl > 0 else ""
             
             total_pnl = result.get('total_pnl', 0)
             total_pnl_sign = "+" if total_pnl > 0 else ""
-            
-            cumulative_hedge_pnl = result.get('cumulative_hedge_pnl', 0)
-            cumulative_hedge_sign = "+" if cumulative_hedge_pnl > 0 else ""
             
             # Форматируем строку таблицы с монопропорциональным шрифтом для лучшего выравнивания
             row_format = "{:<5} {:<10} {:<10} {:<10} {:<12} {:<10} {:<8} {:<10} {:<10} {:<10} {:<10} {:<10} {:<15}\n"
@@ -1767,7 +1783,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
                 f"{result['delta']:.4f}",
                 f"{result['hedge_change']:.4f} {hedge_indicator}",
                 f"{result['fee']:.2f}",
-                f"{hedge_pnl_sign}{hedge_pnl:.2f}",
+                f"{hedge_pnl_sign}{cumulative_hedge_pnl:.2f}",
                 f"{base_pnl_sign}{base_pnl:.2f}",
                 f"{total_pnl_sign}{total_pnl:.2f}",
                 strategy_note
@@ -1868,8 +1884,21 @@ class UniswapV3HedgeCalculator(tk.Tk):
             return
             
         try:
-            # Очищаем график
-            self.dynamic_ax.clear()
+            # Полностью удаляем и пересоздаем график вместо простой очистки
+            # Удаляем старый холст
+            for widget in self.dynamic_plot_frame.winfo_children():
+                widget.destroy()
+                
+            # Пересоздаем фигуру и оси
+            self.dynamic_fig = plt.Figure(figsize=(10, 6), dpi=100)
+            self.dynamic_ax = self.dynamic_fig.add_subplot(111)
+            
+            # Настраиваем отступы
+            self.dynamic_fig.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.15)
+            
+            # Создаем новый холст
+            self.dynamic_canvas = FigureCanvasTkAgg(self.dynamic_fig, master=self.dynamic_plot_frame)
+            self.dynamic_canvas.get_tk_widget().pack(fill="both", expand=True, padx=5, pady=5)
             
             # Подготавливаем данные для графиков
             steps = [r['step'] for r in self.dynamic_results]
@@ -1912,6 +1941,16 @@ class UniswapV3HedgeCalculator(tk.Tk):
                     elif result.get('operation_type') == "no_change":
                         no_change_points.append(i)
             
+            # Находим минимальные и максимальные значения для масштабирования осей
+            all_values = base_pnl + hedge_pnl + combined_pnl
+            min_val = min(all_values) if all_values else 0
+            max_val = max(all_values) if all_values else 0
+            
+            # Добавляем отступы для лучшей визуализации (минимум 10% от диапазона или 100 USDC)
+            y_margin = max((max_val - min_val) * 0.15, 100)
+            y_min = min_val - y_margin
+            y_max = max_val + y_margin
+            
             # График P&L
             self.dynamic_ax.plot(steps, base_pnl, 'g-', linewidth=2, label='P&L основной позиции')
             self.dynamic_ax.plot(steps, hedge_pnl, 'r-', linewidth=2, label='P&L хеджа')
@@ -1944,7 +1983,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
             # Аннотации с ценами
             for i, step in enumerate(steps):
                 # Аннотация с ценой (только для ключевых точек)
-                if i == 0 or i == len(steps)-1 or (i % 3 == 0):
+                if i == 0 or i == len(steps)-1 or i % (max(1, len(steps) // 10)) == 0:
                     self.dynamic_ax.annotate(f"{prices[i]:.0f}", 
                                          xy=(step, combined_pnl[i]),
                                          xytext=(0, 10),
@@ -1960,22 +1999,28 @@ class UniswapV3HedgeCalculator(tk.Tk):
             self.dynamic_ax.set_ylabel('P&L (USDC)', fontsize=10)
             self.dynamic_ax.set_title('Профиль P&L с ребалансировкой хеджа', fontsize=12, fontweight='bold')
             
+            # Устанавливаем диапазон оси Y
+            self.dynamic_ax.set_ylim(y_min, y_max)
+            
             # Настраиваем x-ось для отображения целых шагов
             self.dynamic_ax.set_xticks(steps)
-            self.dynamic_ax.set_xticklabels([str(step) for step in steps])
             
-            # Добавляем легенду
+            # Поворачиваем метки оси X если их много
+            if len(steps) > 10:
+                self.dynamic_ax.set_xticklabels([str(step) for step in steps], rotation=45, ha='right')
+            else:
+                self.dynamic_ax.set_xticklabels([str(step) for step in steps])
+            
+            # Добавляем легенду в оптимальном месте
             self.dynamic_ax.legend(loc='best', fontsize=9)
             
             # Добавляем пояснение к маркерам и движению цены
-            self.dynamic_ax.annotate("△ - сокращение шорта, ▽ - увеличение шорта, □ - без изменений", 
-                                xy=(0.5, 0.01),
-                                xycoords='figure fraction',
-                                ha='center',
-                                fontsize=8)
+            self.dynamic_fig.text(0.5, 0.01, 
+                             "△ - сокращение шорта, ▽ - увеличение шорта, □ - без изменений", 
+                             ha='center', fontsize=8)
             
             # Добавляем текстовое пояснение взаимосвязи движения цены и P&L
-            self.dynamic_ax.text(0.02, 0.02, 
+            text_box = self.dynamic_ax.text(0.02, 0.02, 
                             "При падении цены: ↑ прибыль по хеджу, ↓ убыток по основной позиции\n"
                             "При росте цены: ↓ убыток по хеджу, ↑ прибыль по основной позиции\n"
                             "LP-позиция в Uniswap V3 имеет асимметричное изменение P&L",
@@ -1986,120 +2031,325 @@ class UniswapV3HedgeCalculator(tk.Tk):
             # Включаем сетку
             self.dynamic_ax.grid(True, alpha=0.3)
             
-            # Настраиваем макет
-            self.dynamic_fig.tight_layout(pad=3.0)
+            # Обновляем макет
+            self.dynamic_fig.tight_layout()
             
             # Обновляем холст
             self.dynamic_canvas.draw()
+            
+            # Сохраняем график в временный файл для будущего экспорта в CSV
+            try:
+                # Создаем временную директорию, если её нет
+                temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp")
+                os.makedirs(temp_dir, exist_ok=True)
+                
+                # Путь к файлу с графиком
+                self.chart_temp_path = os.path.join(temp_dir, "cumulative_hedge_pnl.png")
+                
+                # Сохраняем график
+                self.dynamic_fig.savefig(self.chart_temp_path, dpi=150, bbox_inches='tight')
+            except Exception as chart_error:
+                print(f"Предупреждение: Не удалось сохранить график для экспорта: {str(chart_error)}")
+                self.chart_temp_path = None
         
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при построении графика: {str(e)}")
             import traceback
             traceback.print_exc()
 
-    def export_to_excel(self):
-        """Экспортирует результаты динамического хеджирования в Excel-файл"""
+    def load_prices_from_file_and_update(self):
+        """Загружает цены из файла и обновляет поля ввода цен"""
         try:
-            # Проверяем, есть ли результаты для экспорта
-            if not self.dynamic_results:
-                messagebox.showwarning("Предупреждение", "Нет данных для экспорта. Сначала выполните расчет.")
-                return
-            
-            # Открываем диалог для выбора места сохранения файла
-            file_path = filedialog.asksaveasfilename(
-                defaultextension=".xlsx",
-                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-                title="Сохранить как"
+            # Открываем диалог выбора файла
+            file_path = filedialog.askopenfilename(
+                filetypes=[("Text files", "*.txt"), ("CSV files", "*.csv"), ("All files", "*.*")],
+                title="Выберите файл с ценами"
             )
             
-            # Если пользователь отменил сохранение, выходим
+            # Если пользователь отменил выбор, выходим
             if not file_path:
                 return
             
-            # Создаем DataFrame для результатов
-            data = []
-            for result in self.dynamic_results:
-                data.append({
-                    "Шаг": result["step"],
-                    "Цена": result["price"],
-                    "ETH в пуле": result["pool_eth"],
-                    "USDC в пуле": result["pool_usdc"],
-                    "Стоимость пула": result["pool_value"],
-                    "Фьючерс (ETH)": result["hedge_eth"],
-                    "Общая дельта": result["delta"],
-                    "Изменение фьючерса": result["hedge_change"],
-                    "Комиссия": result["fee"],
-                    "P&L хеджа шаг": result["hedge_pnl"],
-                    "P&L хеджа накопл.": result["cumulative_hedge_pnl"],
-                    "P&L базы": result["base_pnl"],
-                    "Общий P&L": result["total_pnl"],
-                    "Направление цены": result["price_direction"],
-                    "Тип операции": result.get("operation_type", "")
-                })
+            prices = []
             
-            results_df = pd.DataFrame(data)
+            # Определяем разделитель на основе расширения файла
+            delimiter = ',' if file_path.lower().endswith('.csv') else None
             
-            # Создаем DataFrame для итоговых результатов
-            summary_data = [{
-                "Параметр": "Итоговая дельта",
-                "Значение": self.dynamic_results[-1]["delta"]
-            }, {
-                "Параметр": "P&L основной позиции",
-                "Значение": self.dynamic_results[-1]["base_pnl"]
-            }, {
-                "Параметр": "P&L хеджа",
-                "Значение": self.dynamic_results[-1]["cumulative_hedge_pnl"]
-            }, {
-                "Параметр": "Общий P&L",
-                "Значение": self.dynamic_results[-1]["total_pnl"]
-            }, {
-                "Параметр": "Общая комиссия",
-                "Значение": self.dynamic_results[-1]["total_fee"]
-            }, {
-                "Параметр": "Чистый результат",
-                "Значение": self.dynamic_results[-1]["total_pnl"] - self.dynamic_results[-1]["total_fee"]
-            }]
+            # Открываем файл и читаем строки
+            with open(file_path, 'r') as file:
+                for line in file:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue  # Пропускаем пустые строки и комментарии
+                    
+                    # Разделяем строку, если нужно
+                    if delimiter:
+                        parts = line.split(delimiter)
+                        # Берем первую колонку, если это CSV с несколькими столбцами
+                        value = parts[0].strip()
+                    else:
+                        value = line
+                    
+                    try:
+                        # Преобразуем значение в число с плавающей точкой
+                        price = float(value.replace(',', '.'))
+                        prices.append(price)
+                    except ValueError:
+                        # Пропускаем нечисловые значения
+                        continue
             
-            summary_df = pd.DataFrame(summary_data)
+            if not prices:
+                messagebox.showwarning("Предупреждение", "В выбранном файле не найдено числовых значений цен")
+                return
             
-            # Создаем объект writer для записи в Excel
-            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                # Записываем данные на разные листы
-                results_df.to_excel(writer, sheet_name="Результаты", index=False)
-                summary_df.to_excel(writer, sheet_name="Итоги", index=False)
-                
-                # Получаем объекты рабочих листов для форматирования
-                workbook = writer.book
-                
-                # Форматируем лист с результатами
-                results_sheet = writer.sheets["Результаты"]
-                for column in results_sheet.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    for cell in column:
-                        if cell.value:
-                            cell_length = len(str(cell.value))
-                            max_length = max(max_length, cell_length)
-                    adjusted_width = (max_length + 2)
-                    results_sheet.column_dimensions[column_letter].width = adjusted_width
-                
-                # Форматируем лист с итогами
-                summary_sheet = writer.sheets["Итоги"]
-                summary_sheet.column_dimensions['A'].width = 25
-                summary_sheet.column_dimensions['B'].width = 15
+            # Очищаем существующие поля ввода цен
+            self.dynamic_price_vars = []
             
-            messagebox.showinfo("Успешно", f"Данные успешно экспортированы в файл:\n{file_path}")
+            # Удаляем все виджеты из контейнера
+            for widget in self.dynamic_price_container.winfo_children():
+                widget.destroy()
             
-            # Открываем файл (если ОС это поддерживает)
-            try:
-                os.startfile(file_path)  # Работает только на Windows
-            except:
-                pass  # Игнорируем ошибку, если не удалось открыть файл
-                
+            # Создаем новые поля для каждой цены из файла
+            for price in prices:
+                price_var = tk.DoubleVar(value=price)
+                self.dynamic_price_vars.append(price_var)
+            
+            # Отображаем поля ввода для загруженных цен
+            for i, price_var in enumerate(self.dynamic_price_vars):
+                self.create_price_field(i, price_var)
+            
+            messagebox.showinfo("Успешно", f"Загружено {len(prices)} цен из файла")
+            
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при экспорте данных: {str(e)}")
+            messagebox.showerror("Ошибка", f"Ошибка при загрузке цен из файла: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def export_to_csv(self):
+        """Экспортирует данные в CSV файл"""
+        try:
+            # Открываем диалог сохранения файла
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+                title="Сохранить данные как CSV"
+            )
+            
+            if not file_path:
+                return  # Пользователь отменил сохранение
+            
+            # Проверяем, есть ли результаты для экспорта из динамического хеджирования
+            if hasattr(self, 'dynamic_results') and self.dynamic_results and self.tab_control.index(self.tab_control.select()) == 3:
+                # Формируем данные для экспорта из результатов динамического хеджирования
+                data = []
+                for step_data in self.dynamic_results:
+                    data.append({
+                        'Шаг': step_data.get('step', 0),
+                        'Цена': step_data.get('price', 0),
+                        'ETH в пуле': step_data.get('pool_eth', 0),
+                        'USDC в пуле': step_data.get('pool_usdc', 0),
+                        'Стоимость пула': step_data.get('pool_value', 0),
+                        'Хедж ETH': step_data.get('hedge_eth', 0),
+                        'Дельта': step_data.get('delta', 0),
+                        'Изменение хеджа': step_data.get('hedge_change', 0),
+                        'Комиссия': step_data.get('fee', 0),
+                        'Общая комиссия': step_data.get('total_fee', 0),
+                        'P&L хеджа за шаг': step_data.get('hedge_pnl', 0),
+                        'Накопленный P&L хеджа': step_data.get('cumulative_hedge_pnl', 0) if 'cumulative_hedge_pnl' in step_data else 0,
+                        'P&L базовой позиции': step_data.get('base_pnl', 0),
+                        'Общий P&L': step_data.get('total_pnl', 0),
+                        'Направление цены': step_data.get('price_direction', ''),
+                        'Тип операции': step_data.get('operation_type', '') if 'operation_type' in step_data else ''
+                    })
+                
+                # Добавляем сводную информацию
+                if len(self.dynamic_results) > 0:
+                    last_result = self.dynamic_results[-1]
+                    summary_data = {
+                        'Параметр': [
+                            'Итоговая дельта',
+                            'P&L основной позиции',
+                            'Накопленный P&L хеджа',
+                            'Общий P&L',
+                            'Общая комиссия'
+                        ],
+                        'Значение': [
+                            last_result.get('delta', 0),
+                            last_result.get('base_pnl', 0),
+                            last_result.get('cumulative_hedge_pnl', 0) if 'cumulative_hedge_pnl' in last_result else last_result.get('hedge_pnl', 0),
+                            last_result.get('total_pnl', 0),
+                            last_result.get('total_fee', 0)
+                        ]
+                    }
+                    
+                    # Сохраняем основные данные и сводную информацию в CSV
+                    df = pd.DataFrame(data)
+                    df.to_csv(file_path, index=False)
+                    
+                    # Сохраняем сводную информацию в отдельный файл
+                    summary_path = os.path.splitext(file_path)[0] + "_summary.csv"
+                    summary_df = pd.DataFrame(summary_data)
+                    summary_df.to_csv(summary_path, index=False)
+                    
+                    messagebox.showinfo("Экспорт завершен", f"Данные успешно экспортированы в {file_path}\nСводная информация сохранена в {summary_path}")
+                else:
+                    # Сохраняем только основные данные в CSV
+                    df = pd.DataFrame(data)
+                    df.to_csv(file_path, index=False)
+                    
+                    messagebox.showinfo("Экспорт завершен", f"Данные успешно экспортированы в {file_path}")
+            else:
+                # Формируем данные для экспорта в зависимости от активной вкладки
+                data = []
+                
+                # Получаем текущие параметры
+                current_price = float(str(self.current_price.get()).replace(',', '.'))
+                lower_bound = float(str(self.lower_bound.get()).replace(',', '.'))
+                upper_bound = float(str(self.upper_bound.get()).replace(',', '.'))
+                total_pool_value = float(str(self.total_pool_value.get()).replace(',', '.'))
+                
+                # Рассчитываем ликвидность
+                liquidity = total_pool_value / (((1/math.sqrt(current_price) - 1/math.sqrt(upper_bound)) * current_price) + 
+                                            (math.sqrt(current_price) - math.sqrt(lower_bound)))
+                
+                # Создаем ценовой диапазон для экспорта
+                step = (upper_bound - lower_bound) / 50
+                price_range = []
+                price = max(0.1, lower_bound * 0.5)  # Начинаем с половины нижней границы, но не меньше 0.1
+                while price <= upper_bound * 1.5:  # Заканчиваем на 150% верхней границы
+                    price_range.append(price)
+                    price += step
+                
+                # Рассчитываем значения для каждой цены
+                for price in price_range:
+                    # Базовая позиция
+                    if price < lower_bound:
+                        eth = liquidity * (1/math.sqrt(lower_bound) - 1/math.sqrt(upper_bound))
+                        usdc = 0
+                    elif price > upper_bound:
+                        eth = 0
+                        usdc = liquidity * (math.sqrt(upper_bound) - math.sqrt(lower_bound))
+                    else:
+                        eth = liquidity * (1/math.sqrt(price) - 1/math.sqrt(upper_bound))
+                        usdc = liquidity * (math.sqrt(price) - math.sqrt(lower_bound))
+                    
+                    base_value = eth * price + usdc
+                    
+                    # Хеджирующая позиция
+                    hedge_eth = 0
+                    hedge_usdc = 0
+                    hedge_pnl = 0
+                    
+                    if self.hedge_enabled.get():
+                        hedge_amount = float(str(self.hedge_amount.get()).replace(',', '.'))
+                        hedge_price = float(str(self.hedge_price.get()).replace(',', '.'))
+                        hedge_eth = -hedge_amount
+                        hedge_usdc = abs(hedge_eth) * hedge_price
+                        
+                        # P&L хеджа (для шорта это price_diff * amount)
+                        hedge_pnl = -hedge_eth * (hedge_price - price)
+                        
+                        # Получаем комиссию
+                        try:
+                            hedge_fee_percent = float(str(self.hedge_fee_percent.get()).replace(',', '.')) / 100.0
+                        except:
+                            hedge_fee_percent = 0.002  # 0.2% по умолчанию
+                        
+                        # Расчет комиссии
+                        hedge_fee = abs(hedge_eth) * hedge_price * hedge_fee_percent
+                        hedge_pnl -= hedge_fee
+                    
+                    # Общий результат
+                    total_value = base_value + hedge_pnl
+                    
+                    # Добавляем строку данных
+                    data.append({
+                        'Цена': price,
+                        'ETH в пуле': eth,
+                        'USDC в пуле': usdc,
+                        'Стоимость пула': base_value,
+                        'Хедж ETH': hedge_eth,
+                        'P&L хеджа': hedge_pnl,
+                        'Общая стоимость': total_value
+                    })
+                
+                # Сохраняем данные в CSV
+                df = pd.DataFrame(data)
+                df.to_csv(file_path, index=False)
+                
+                messagebox.showinfo("Экспорт завершен", f"Данные успешно экспортированы в {file_path}")
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при экспорте данных: {str(e)}")
+            traceback.print_exc()
+
+    def load_prices_from_file(self, target_widget=None):
+        """Загружает цены из файла"""
+        try:
+            # Открываем диалог выбора файла
+            file_path = filedialog.askopenfilename(
+                filetypes=[("CSV files", "*.csv"), ("Text files", "*.txt"), ("All files", "*.*")],
+                title="Выберите файл с ценами"
+            )
+            
+            if not file_path:
+                return None  # Пользователь отменил выбор
+            
+            prices = []
+            
+            # Определяем разделитель на основе расширения файла
+            delimiter = ',' if file_path.lower().endswith('.csv') else None
+            
+            # Открываем файл и читаем строки
+            with open(file_path, 'r') as file:
+                for line in file:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue  # Пропускаем пустые строки и комментарии
+                    
+                    # Разделяем строку, если нужно
+                    if delimiter:
+                        parts = line.split(delimiter)
+                        # Берем первую колонку, если это CSV с несколькими столбцами
+                        value = parts[0].strip()
+                    else:
+                        value = line
+                    
+                    try:
+                        # Преобразуем значение в число с плавающей точкой
+                        price = float(value.replace(',', '.'))
+                        prices.append(price)
+                    except ValueError:
+                        # Пропускаем нечисловые значения
+                        continue
+            
+            if not prices:
+                messagebox.showwarning("Предупреждение", "В выбранном файле не найдено числовых значений цен")
+                return None
+            
+            return prices
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при загрузке цен из файла: {str(e)}")
+            traceback.print_exc()
+            return None
+
+    def load_prices_and_display(self, text_widget):
+        """Загружает цены из файла и отображает их в указанном виджете"""
+        prices = self.load_prices_from_file()
+        
+        if prices:
+            # Форматируем цены как строку с запятыми
+            prices_str = ", ".join([f"{price:.2f}" for price in prices])
+            
+            # Очищаем виджет и вставляем новые цены
+            if isinstance(text_widget, ttk.Entry):
+                text_widget.delete(0, tk.END)
+                text_widget.insert(0, prices_str)
+            else:
+                text_widget.set(prices_str)
+            
+            messagebox.showinfo("Загрузка завершена", f"Загружено {len(prices)} цен из файла")
 
     def calculate_eth_amount(self, current_eth, current_usdc, current_price, new_price, price_range):
         """
