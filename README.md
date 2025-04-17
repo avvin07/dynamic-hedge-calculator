@@ -1,65 +1,48 @@
-<<<<<<< HEAD
-# Uniswap V3 Calculator
+# Калькулятор хеджирования Uniswap V3
 
-A GUI application to calculate and visualize Uniswap V3 liquidity positions.
+Инструмент для расчета и визуализации стратегий хеджирования позиций в Uniswap V3.
 
-## Features
+## Возможности
 
-- Calculate liquidity, token amounts, and position values for Uniswap V3 positions
-- Visualize how your position changes across the price range
-- See the effects of price movements to upper and lower bounds
-- Interactive graph showing ETH and USDC amounts at different prices
+- Расчет позиции LP (провайдера ликвидности) в Uniswap V3
+- Расчет хеджирования через фьючерсы
+- Динамическое хеджирование с ребалансировкой
+- Сеточное хеджирование
+- Визуализация результатов и P&L
 
-## Requirements
+## Требования
 
-- Python 3.7 or higher
-- Required packages listed in `requirements.txt`
+- Python 3.6+
+- Библиотеки:
+  - tkinter
+  - matplotlib
+  - numpy
+  - math
 
-## Installation
-
-1. Clone or download this repository
-2. Install the required packages:
-
-```bash
-pip install -r requirements.txt
-```
-
-## Usage
-
-1. Run the application:
+## Запуск
 
 ```bash
-python uniswap_v3_calc.py
+python uniswap_v3_hedge_calculator.py
 ```
 
-2. Enter your desired parameters:
-   - Current price (ETH)
-   - Lower bound (USDC)
-   - Upper bound (USDC)
-   - Total pool value (USDC)
+## Описание
 
-3. Click the "Calculate" button to update results and visualizations
+Приложение позволяет моделировать поведение LP-позиции в Uniswap V3 при различных ценовых движениях и рассчитывать оптимальные стратегии хеджирования с использованием фьючерсов.
 
-4. View the calculated values for:
-   - Current position (liquidity, ETH, USDC)
-   - Position at upper bound
-   - Position at lower bound
+### Вкладки приложения:
 
-5. Examine the graph to see how your position changes with price movements
+1. **Основная позиция** - расчет параметров LP-позиции в Uniswap V3
+2. **Хеджирование** - расчет базового хеджирования
+3. **Сеточное хеджирование** - расчет серии хеджирующих сделок
+4. **Динамический хедж** - расчет ребалансировки хеджа при изменении цены
 
-## Calculations
+### Особенности динамического хеджирования:
 
-The application uses the Uniswap V3 formulas to calculate:
+- Автоматический расчет идеальной дельта-нейтральной позиции
+- Отображение P&L базовой позиции и хеджа
+- Визуализация результатов на графике
+- Детальный расчет всех шагов хеджирования
 
-- Liquidity (L) = Total Pool Value / (((1/√P - 1/√Pb) * P) + (√P - √Pa))
-  - Where P = current price, Pa = lower bound, Pb = upper bound
+## Скриншоты
 
-- Amount of ETH = L * (1/√P - 1/√Pb)
-- Amount of USDC = L * (√P - √Pa)
-
-- At upper bound (P = Pb), ETH = 0 and USDC = (√Pb - √P) * L + Amount of USDC at current price
-- At lower bound (P = Pa), ETH = (√P - √Pa) * L / Pa + Amount of ETH at current price and USDC = 0 
-=======
-# Uniswap-v3-calculator
-Программа построения профилей Uniswap
->>>>>>> fa2d306958f1df3c85f1e5f774d91c9f98bc6bb0
+Добавьте скриншоты приложения здесь.
