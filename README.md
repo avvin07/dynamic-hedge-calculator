@@ -33,7 +33,9 @@
 
 ## Скриншоты
 
-![Основной интерфейс](screenshots/main.png)
+![Основной интерфейс](screenshots/1.png)
+![Основной интерфейс](screenshots/2.png)
+![Основной интерфейс](screenshots/3.png)
 
 ## Лицензия
 
