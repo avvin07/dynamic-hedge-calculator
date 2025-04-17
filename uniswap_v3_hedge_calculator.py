@@ -108,9 +108,8 @@ class UniswapV3HedgeCalculator(tk.Tk):
         self.hedge_tab = ttk.Frame(self.tab_control)
         self.tab_control.add(self.hedge_tab, text="Хеджирование")
         
-        # Вкладка сеточного хеджирования
-        self.grid_tab = ttk.Frame(self.tab_control)
-        self.tab_control.add(self.grid_tab, text="Сеточное хеджирование")
+        # Вкладка сеточного хеджирования (создаем, но не добавляем в интерфейс)
+        self.grid_tab = ttk.Frame(self)  # Создаем, но не добавляем в tab_control
         
         # Добавляем вкладку динамического хеджирования
         self.dynamic_tab = ttk.Frame(self.tab_control)
@@ -124,7 +123,7 @@ class UniswapV3HedgeCalculator(tk.Tk):
         # Создаем виджеты для вкладки хеджирования
         self.create_hedge_tab_widgets()
         
-        # Создаем виджеты для вкладки сеточного хеджирования
+        # Создаем виджеты для вкладки сеточного хеджирования (скрытой)
         self.create_grid_tab_widgets()
         
         # Создаем виджеты для вкладки динамического хеджирования
@@ -680,9 +679,9 @@ class UniswapV3HedgeCalculator(tk.Tk):
     
     def plot_liquidity_range(self, current_price, lower_bound, upper_bound, liquidity):
         # Уже не нужно очищать, так как графики пересозданы
-        # Расширяем диапазон отображения на 25%
-        price_min = lower_bound * 0.75  # расширяем на 25% вниз
-        price_max = upper_bound * 1.25  # расширяем на 25% вверх
+        # Расширяем диапазон отображения: 20% слева и 15% справа
+        price_min = lower_bound * 0.8  # расширяем на 20% вниз
+        price_max = upper_bound * 1.15  # расширяем на 15% вверх
         
         # Create price range for x-axis с расширенным диапазоном
         price_range = np.linspace(price_min, price_max, 1000)
@@ -801,9 +800,9 @@ class UniswapV3HedgeCalculator(tk.Tk):
     def plot_hedged_position(self, current_price, lower_bound, upper_bound, liquidity, hedge_eth, hedge_usdc):
         # Уже не нужно очищать, так как график пересоздан
         
-        # Расширяем диапазон отображения: 50% вниз от нижнего канала и 20% вверх от верхнего канала
-        price_min = lower_bound * 0.5  # расширяем на 50% вниз
-        price_max = upper_bound * 1.2  # расширяем на 20% вверх
+        # Расширяем диапазон отображения: 20% слева и 15% справа
+        price_min = lower_bound * 0.8  # расширяем на 20% вниз
+        price_max = upper_bound * 1.15  # расширяем на 15% вверх
         
         # Create price range for x-axis с расширенным диапазоном
         price_range = np.linspace(price_min, price_max, 1000)
@@ -957,9 +956,9 @@ class UniswapV3HedgeCalculator(tk.Tk):
         
         # Добавляем маркер цены выхода на график
         if exit_price > 0:
-            # Расширяем диапазон отображения: 50% вниз от нижнего канала и 20% вверх от верхнего канала
-            price_min = lower_bound * 0.5
-            price_max = upper_bound * 1.2
+            # Расширяем диапазон отображения: 20% слева и 15% справа
+            price_min = lower_bound * 0.8
+            price_max = upper_bound * 1.15
             
             # Получаем данные графика
             price_range = np.linspace(price_min, price_max, 1000)

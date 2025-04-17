@@ -46,7 +46,14 @@ coverage.xml
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Environments
+# PyCharm project files
+.idea/
+
+# VS Code files
+.vscode/
+*.code-workspace
+
+# Environment
 .env
 .venv
 env/
@@ -55,12 +62,13 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDE specific files
-.idea/
-.vscode/
-*.swp
-*.swo
+# Custom application files
+temp/
+*.log
+*.bak
+*~
 
-# System-specific files
-.DS_Store
-Thumbs.db 
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini 
