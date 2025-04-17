@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Uniswap V3 Calculator
 
 A GUI application to calculate and visualize Uniswap V3 liquidity positions.
@@ -58,3 +59,7 @@ The application uses the Uniswap V3 formulas to calculate:
 
 - At upper bound (P = Pb), ETH = 0 and USDC = (√Pb - √P) * L + Amount of USDC at current price
 - At lower bound (P = Pa), ETH = (√P - √Pa) * L / Pa + Amount of ETH at current price and USDC = 0 
+=======
+# Uniswap-v3-calculator
+Программа построения профилей Uniswap
+>>>>>>> fa2d306958f1df3c85f1e5f774d91c9f98bc6bb0
