@@ -1,6 +1,6 @@
 # Калькулятор хеджирования Uniswap V3
 
-**Файл:** `uniswap_v3_hedge_calculator_refactored.py`
+**Файл:** `uniswap_v3_hedge_calculator.py`
 
 ---
 
